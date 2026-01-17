@@ -1317,6 +1317,49 @@ app.delete('/api/admin/products/:id', adminAuthMiddleware, (req, res) => {
   }
 });
 
+// Test notification endpoint (admin only)
+app.post('/api/admin/test-notification', adminAuthMiddleware, async (req, res) => {
+  try {
+    const { user_id } = req.body;
+
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(user_id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (!user.telegram_id) {
+      return res.status(400).json({ error: 'User has no telegram_id' });
+    }
+
+    console.log('Testing notification to user:', user.telegram_id);
+
+    const webAppUrl = process.env.WEB_APP_URL || 'https://white-agency-app-production.up.railway.app';
+
+    const result = await bot.telegram.sendMessage(
+      user.telegram_id,
+      `🔔 *Тестовое уведомление*\n\nЭто тестовое сообщение от бота.\nВаш Telegram ID: ${user.telegram_id}`,
+      {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '📱 Открыть приложение', web_app: { url: webAppUrl } }
+          ]]
+        }
+      }
+    );
+
+    console.log('Notification sent successfully:', result);
+    res.json({ success: true, message: 'Notification sent', result });
+  } catch (error) {
+    console.error('Test notification error:', error);
+    res.status(500).json({
+      error: 'Failed to send notification',
+      details: error.message,
+      code: error.code
+    });
+  }
+});
+
 // ==================== INVOICES ====================
 
 // Create invoice (admin only)
@@ -1340,6 +1383,10 @@ app.post('/api/admin/invoices', adminAuthMiddleware, (req, res) => {
     // Get user info
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(user_id);
 
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
     // Send notification to user
     db.prepare(`
       INSERT INTO notifications (user_id, title, message)
@@ -1347,8 +1394,13 @@ app.post('/api/admin/invoices', adminAuthMiddleware, (req, res) => {
     `).run(user_id, '💳 Счет выставлен', `Счет #${invoiceId} на сумму $${finalAmount.toFixed(2)}. Перейдите в приложение для оплаты.`);
 
     // Send Telegram notification with link
-    if (user && user.telegram_id) {
-      const miniAppUrl = `https://t.me/${process.env.BOT_USERNAME}/${process.env.MINI_APP_NAME || 'app'}?startapp=invoice_${invoiceId}`;
+    if (user.telegram_id) {
+      console.log(`Sending invoice notification to user ${user.telegram_id}, invoice ${invoiceId}`);
+
+      // Use Web App URL from env or construct it
+      const webAppUrl = process.env.WEB_APP_URL || 'https://white-agency-app-production.up.railway.app';
+      const invoiceUrl = `${webAppUrl}#invoice_${invoiceId}`;
+
       bot.telegram.sendMessage(
         user.telegram_id,
         `💳 *Счет выставлен*\n\n` +
@@ -1360,11 +1412,22 @@ app.post('/api/admin/invoices', adminAuthMiddleware, (req, res) => {
           parse_mode: 'Markdown',
           reply_markup: {
             inline_keyboard: [[
-              { text: '💳 Оплатить', web_app: { url: `${miniAppUrl}` } }
+              {
+                text: '💳 Оплатить',
+                web_app: { url: invoiceUrl }
+              }
             ]]
           }
         }
-      ).catch(err => console.error('Error sending invoice notification:', err));
+      ).then(() => {
+        console.log(`Invoice notification sent successfully to ${user.telegram_id}`);
+      }).catch(err => {
+        console.error('Error sending invoice notification:', err);
+        console.error('User telegram_id:', user.telegram_id);
+        console.error('Invoice URL:', invoiceUrl);
+      });
+    } else {
+      console.warn(`User ${user_id} has no telegram_id, cannot send notification`);
     }
 
     const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId);

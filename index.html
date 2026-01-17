@@ -2492,10 +2492,24 @@
 
         // Handle invoice deep link (from Telegram notification)
         function handleInvoiceDeepLink() {
+            // Check URL hash first (from Web App button)
+            const hash = window.location.hash;
+            if (hash && hash.startsWith('#invoice_')) {
+                const invoiceId = hash.replace('#invoice_', '');
+                console.log('Opening invoice from URL hash:', invoiceId);
+                // Show invoice after app loads
+                setTimeout(() => {
+                    showInvoice(invoiceId);
+                }, 1000);
+                return;
+            }
+
+            // Fallback to start_param
             if (tg && tg.initDataUnsafe?.start_param) {
                 const startParam = tg.initDataUnsafe.start_param;
                 if (startParam.startsWith('invoice_')) {
                     const invoiceId = startParam.replace('invoice_', '');
+                    console.log('Opening invoice from start_param:', invoiceId);
                     // Show invoice after app loads
                     setTimeout(() => {
                         showInvoice(invoiceId);

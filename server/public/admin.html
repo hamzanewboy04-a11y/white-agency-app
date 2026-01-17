@@ -1176,8 +1176,12 @@
           <div class="border-t border-gray-800 pt-4">
             <div class="text-xs text-gray-600 mb-3 uppercase tracking-wide">💳 Выставить счет:</div>
             <button onclick="createInvoiceForOrder('${order.id}', ${order.user_id}, ${order.total})"
-              class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-medium text-sm transition">
+              class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-medium text-sm transition mb-2">
               💳 Создать инвойс
+            </button>
+            <button onclick="testNotification(${order.user_id})"
+              class="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium text-sm transition">
+              🔔 Тест уведомления
             </button>
           </div>
           ` : ''}
@@ -1363,6 +1367,33 @@
         closeOrderModal();
       } catch (error) {
         showToast('Ошибка создания инвойса: ' + error.message, 'error');
+      }
+    }
+
+    async function testNotification(userId) {
+      try {
+        showToast('Отправка тестового уведомления...', 'info');
+        const result = await apiCall('/api/admin/test-notification', 'POST', {
+          user_id: userId
+        });
+
+        if (result.success) {
+          showToast('✅ Тестовое уведомление отправлено успешно!', 'success');
+          console.log('Notification result:', result);
+        } else {
+          showToast('❌ Ошибка отправки уведомления', 'error');
+        }
+      } catch (error) {
+        console.error('Test notification error:', error);
+        showToast('❌ Ошибка: ' + (error.details || error.message), 'error');
+
+        // Show detailed error in console
+        if (error.details) {
+          console.error('Error details:', error.details);
+        }
+        if (error.code) {
+          console.error('Error code:', error.code);
+        }
       }
     }
 
