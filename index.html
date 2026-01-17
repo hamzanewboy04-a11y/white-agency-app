@@ -390,8 +390,8 @@
                         <span class="text-xs text-gray-500">Ваш промокод для друзей</span>
                         <p class="font-mono text-lg font-bold mt-1" id="myPromoCode">---</p>
                     </div>
-                    <button onclick="copyPromo()" class="px-4 py-2 bg-gray-100 rounded-lg text-sm hover:bg-gray-200">
-                        📋 Копировать
+                    <button onclick="copyPromo()" class="w-10 h-10 flex items-center justify-center bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors text-lg" title="Копировать">
+                        📋
                     </button>
                 </div>
                 <p class="text-xs text-gray-400 mt-2">Друг получит -15% на первый заказ, вы — 25% от суммы его заказа</p>
@@ -533,7 +533,7 @@
                             class="w-full px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black uppercase mb-2"
                             onkeyup="this.value = this.value.toUpperCase()">
                         <button onclick="applyPromoCode()" class="w-full py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition">
-                            ✓ Применить промокод
+                            ✓ Применить
                         </button>
                     </div>
                     <div id="promoApplied" class="hidden flex justify-between items-center text-blue-600 text-sm bg-blue-50 px-3 py-2 rounded-lg">
@@ -600,7 +600,7 @@
                 <p class="text-sm mb-2 font-medium">Ваша реферальная ссылка</p>
                 <div class="flex gap-2">
                     <input type="text" readonly id="refLinkInput" value="" class="flex-1 bg-black/5 px-3 py-2 rounded-lg text-xs font-mono border border-gray-200" style="color: var(--tg-theme-text-color);">
-                    <button onclick="copyRefLink()" class="px-4 py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 whitespace-nowrap">📋 Копировать</button>
+                    <button onclick="copyRefLink()" class="w-10 h-10 flex items-center justify-center bg-black text-white rounded-lg hover:bg-gray-800 transition-colors text-lg" title="Копировать">📋</button>
                 </div>
             </div>
             
@@ -686,8 +686,8 @@
                     <label class="text-sm font-medium block">Промокод (опционально)</label>
                     <div class="flex gap-2">
                         <input type="text" id="cartPromoCode" placeholder="Введите промокод..." class="flex-1 px-4 py-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-black uppercase">
-                        <button onclick="applyPromoCode()" class="px-6 py-3 bg-black text-white rounded-xl text-sm font-medium hover:bg-gray-800 transition-colors">
-                            Применить
+                        <button onclick="applyPromoCode()" class="w-12 h-12 flex items-center justify-center bg-black text-white rounded-xl hover:bg-gray-800 transition-colors text-xl" title="Применить">
+                            ✓
                         </button>
                     </div>
                     <p id="promoError" class="text-xs text-red-500 hidden"></p>
