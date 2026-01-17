@@ -194,7 +194,7 @@
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
                     </svg>
-                    <span class="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" id="notifDot"></span>
+                    <span class="hidden absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1" id="notifBadge">0</span>
                 </button>
                 <button onclick="showSettings()" class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -312,6 +312,10 @@
             <button onclick="switchTab('orders')" class="tab-btn px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap bg-gray-100 transition-all" data-tab="orders">
                 Заказы
             </button>
+            <button onclick="switchTab('invoices')" class="tab-btn px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap bg-gray-100 transition-all relative" data-tab="invoices">
+                💳 Счета
+                <span id="invoicesBadge" class="hidden absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center"></span>
+            </button>
             <button onclick="switchTab('promo')" class="tab-btn px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap bg-gray-100 transition-all" data-tab="promo">
                 Промокоды
             </button>
@@ -347,7 +351,28 @@
                 </div>
             </div>
         </div>
-        
+
+        <!-- Invoices Tab -->
+        <div id="invoicesTab" class="space-y-3 fade-in hidden">
+            <div class="mb-4 bg-blue-50 rounded-xl p-4 text-sm">
+                <div class="flex items-start gap-2">
+                    <span class="text-lg">ℹ️</span>
+                    <div>
+                        <p class="font-medium text-blue-900">Как оплатить счёт?</p>
+                        <p class="text-blue-700 mt-1">Выберите счёт ниже и нажмите "Оплатить". После оплаты статус обновится автоматически.</p>
+                    </div>
+                </div>
+            </div>
+            <div id="invoicesList">
+                <div class="text-center py-8 text-gray-400">
+                    <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+                    </svg>
+                    <p>У вас пока нет счетов</p>
+                </div>
+            </div>
+        </div>
+
         <!-- Promo Tab -->
         <div id="promoTab" class="space-y-3 hidden fade-in">
             <div class="card rounded-2xl p-4">
@@ -1237,6 +1262,7 @@
             document.getElementById('refLinkInput').value = `t.me/${CONFIG.BOT_USERNAME}?start=${user.referralCode}`;
             
             renderOrders();
+            renderInvoices();
             renderStats();
             renderAchievements();
             renderPrices();
@@ -1256,7 +1282,13 @@
             document.getElementById('withdrawReferralBalance').textContent = `$${(user.referral_earnings || 0).toFixed(2)}`;
             
             const unread = user.notifications.filter(n => !n.read).length;
-            document.getElementById('notifDot').style.display = unread > 0 ? 'block' : 'none';
+            const notifBadge = document.getElementById('notifBadge');
+            if (unread > 0) {
+                notifBadge.textContent = unread > 99 ? '99+' : unread;
+                notifBadge.classList.remove('hidden');
+            } else {
+                notifBadge.classList.add('hidden');
+            }
 
             // Show/hide referral discount banner
             const isReferred = user.orders && user.orders.length === 0 && user.referredBy;
@@ -1315,6 +1347,8 @@
             container.innerHTML = orders.slice().reverse().map(order => {
                 const statusClasses = {
                     pending: 'bg-yellow-100 text-yellow-700 border-l-yellow-500',
+                    awaiting_manager: 'bg-yellow-100 text-yellow-700 border-l-yellow-500',
+                    awaiting_payment: 'bg-orange-100 text-orange-700 border-l-orange-500',
                     pending_verification: 'bg-yellow-100 text-yellow-700 border-l-yellow-500',
                     verifying: 'bg-blue-100 text-blue-700 border-l-blue-500',
                     working: 'bg-blue-100 text-blue-700 border-l-blue-500',
@@ -1322,35 +1356,48 @@
                     cancelled: 'bg-red-100 text-red-700 border-l-red-500'
                 };
                 const statusTexts = {
-                    pending: '⏳ Ожидает',
-                    pending_verification: '⏳ На проверке',
-                    verifying: '🔍 Проверяется',
-                    working: '🎨 В работе',
-                    completed: '✓ Готово',
+                    pending: '⏳ Ожидает обработки',
+                    awaiting_manager: '👤 Ожидает менеджера (обычно 2-4 часа)',
+                    awaiting_payment: '💳 Ожидает оплаты - проверьте счета',
+                    pending_verification: '⏳ На проверке платежа',
+                    verifying: '🔍 Проверяем оплату',
+                    working: '🎨 В работе - создаём ваш заказ!',
+                    completed: '✅ Готово - можете скачать',
                     cancelled: '❌ Отменён'
+                };
+                const statusHints = {
+                    awaiting_manager: 'Менеджер скоро проверит ваш заказ и отправит счёт на оплату',
+                    awaiting_payment: 'Счёт создан! Перейдите во вкладку "Счета" для оплаты',
+                    verifying: 'Проверяем вашу оплату, обычно это занимает до 10 минут',
+                    working: 'Ваш заказ в работе! Вы получите уведомление когда будет готов'
                 };
 
                 // Fallback для неизвестных статусов
                 const statusClass = statusClasses[order.status] || 'bg-gray-100 text-gray-700 border-l-gray-500';
                 const statusText = statusTexts[order.status] || order.status;
+                const statusHint = statusHints[order.status] || '';
                 const borderClass = statusClass.split(' ').pop();
 
                 // Check if this is a cart order (has items)
                 const isCartOrder = Array.isArray(order.items) && order.items.length > 0;
 
                 let orderDetails = '';
+                let orderTypeIcon = '';
                 if (isCartOrder) {
                     // Show cart items
                     const itemsList = order.items.map(item =>
                         `${item.name} x${item.quantity}`
                     ).join(', ');
+                    orderTypeIcon = '<span class="inline-block px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs font-medium mr-2">📦 Каталог</span>';
                     orderDetails = `
+                        ${orderTypeIcon}
                         <h3 class="font-semibold mt-2">Заказ из корзины</h3>
                         <p class="text-xs text-gray-500">${itemsList}</p>
                         ${order.comment ? `<p class="text-xs text-gray-400 mt-1">💬 ${order.comment}</p>` : ''}
                     `;
                 } else {
                     // Show old-style order
+                    orderTypeIcon = '<span class="inline-block px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium mr-2">🎨 Услуга</span>';
                     let formatsText = '';
                     if (Array.isArray(order.formats)) {
                         formatsText = order.formats.join(', ');
@@ -1365,6 +1412,7 @@
                         formatsText = 'Не указано';
                     }
                     orderDetails = `
+                        ${orderTypeIcon}
                         <h3 class="font-semibold mt-2">${order.service || 'Услуга'}</h3>
                         <p class="text-xs text-gray-500">${order.niche || ''} • ${formatsText}</p>
                     `;
@@ -1375,6 +1423,7 @@
                         <div class="flex justify-between items-start mb-3">
                             <div class="flex-1">
                                 <span class="text-xs px-2 py-0.5 rounded-full ${statusClass} font-medium">${statusText}</span>
+                                ${statusHint ? `<p class="text-xs text-gray-500 mt-2 italic">💡 ${statusHint}</p>` : ''}
                                 ${orderDetails}
                             </div>
                             <div class="text-right">
@@ -1398,6 +1447,109 @@
                     container.innerHTML = `
                         <div class="text-center py-8 text-red-500">
                             <p>⚠️ Ошибка загрузки заказов</p>
+                            <button onclick="location.reload()" class="mt-4 px-6 py-2 bg-black text-white rounded-full text-sm">
+                                Обновить страницу
+                            </button>
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        function renderInvoices() {
+            try {
+                const container = document.getElementById('invoicesList');
+                const invoices = state.user.invoices || [];
+
+                // Count pending invoices for badge
+                const pendingCount = invoices.filter(inv => inv.status === 'pending').length;
+                const invoicesBadge = document.getElementById('invoicesBadge');
+                if (pendingCount > 0) {
+                    invoicesBadge.textContent = pendingCount;
+                    invoicesBadge.classList.remove('hidden');
+                } else {
+                    invoicesBadge.classList.add('hidden');
+                }
+
+                if (invoices.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center py-8 text-gray-400">
+                            <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+                            </svg>
+                            <p>У вас пока нет счетов</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                container.innerHTML = invoices.slice().reverse().map(invoice => {
+                    const statusConfig = {
+                        pending: { bg: 'bg-yellow-100', text: 'text-yellow-700', border: 'border-l-yellow-500', label: '⏳ Ожидает оплаты', btn: 'bg-green-600 hover:bg-green-700' },
+                        verifying: { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-l-blue-500', label: '🔍 Проверка платежа', btn: 'bg-gray-400 cursor-not-allowed' },
+                        paid: { bg: 'bg-green-100', text: 'text-green-700', border: 'border-l-green-500', label: '✅ Оплачено', btn: '' },
+                        cancelled: { bg: 'bg-red-100', text: 'text-red-700', border: 'border-l-red-500', label: '❌ Отменён', btn: '' }
+                    };
+
+                    const status = statusConfig[invoice.status] || statusConfig.pending;
+                    const date = new Date(invoice.created_at).toLocaleString('ru-RU', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+
+                    let paymentButton = '';
+                    if (invoice.status === 'pending') {
+                        paymentButton = `
+                            <button onclick="window.location.hash='invoice_${invoice.id}'; location.reload();"
+                                    class="w-full ${status.btn} text-white py-3 rounded-xl font-medium transition-colors">
+                                💳 Оплатить счёт
+                            </button>
+                        `;
+                    } else if (invoice.status === 'verifying') {
+                        paymentButton = `
+                            <button disabled class="w-full ${status.btn} text-white py-3 rounded-xl font-medium opacity-50">
+                                ⏳ Проверяем платёж...
+                            </button>
+                        `;
+                    } else if (invoice.status === 'paid' && invoice.tx_hash) {
+                        paymentButton = `
+                            <a href="https://tronscan.org/#/transaction/${invoice.tx_hash}"
+                               target="_blank"
+                               class="block w-full bg-gray-100 text-gray-700 py-2 rounded-lg text-xs font-medium text-center hover:bg-gray-200 transition-colors">
+                                🔗 Посмотреть транзакцию
+                            </a>
+                        `;
+                    }
+
+                    return `
+                        <div class="card rounded-2xl p-4 border-l-4 ${status.border}">
+                            <div class="flex justify-between items-start mb-3">
+                                <div class="flex-1">
+                                    <span class="text-xs px-2 py-0.5 rounded-full ${status.bg} ${status.text} font-medium">${status.label}</span>
+                                    <h3 class="font-semibold mt-2">Счёт #${invoice.id}</h3>
+                                    <p class="text-xs text-gray-500">${date}</p>
+                                    ${invoice.order_id ? `<p class="text-xs text-gray-400 mt-1">Заказ: ${invoice.order_id}</p>` : ''}
+                                </div>
+                                <div class="text-right">
+                                    <span class="text-xl font-bold">${invoice.amount.toFixed(2)}</span>
+                                    <p class="text-xs text-gray-500">USDT</p>
+                                </div>
+                            </div>
+                            ${paymentButton}
+                        </div>
+                    `;
+                }).join('');
+
+            } catch (error) {
+                console.error('Error rendering invoices:', error);
+                const container = document.getElementById('invoicesList');
+                if (container) {
+                    container.innerHTML = `
+                        <div class="text-center py-8 text-red-500">
+                            <p>⚠️ Ошибка загрузки счетов</p>
                             <button onclick="location.reload()" class="mt-4 px-6 py-2 bg-black text-white rounded-full text-sm">
                                 Обновить страницу
                             </button>
@@ -1518,12 +1670,12 @@
             document.getElementById('cashbackModalBalance').textContent = `$${state.user.cashback.toFixed(2)}`;
             renderCashbackHistory();
         }
-        function showNotifications() { 
+        function showNotifications() {
             showModal('notifModal');
             renderNotifications();
             state.user.notifications.forEach(n => n.read = true);
             saveUserData();
-            document.getElementById('notifDot').style.display = 'none';
+            document.getElementById('notifBadge').classList.add('hidden');
         }
 
         function showChat() {
