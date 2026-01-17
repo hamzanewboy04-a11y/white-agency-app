@@ -43,6 +43,9 @@ db.exec(`
     formats TEXT,
     description TEXT,
     refs TEXT,
+    media TEXT,
+    items TEXT,
+    comment TEXT,
     base_price REAL,
     discount REAL,
     cashback_used REAL,
@@ -121,6 +124,38 @@ db.exec(`
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
 `);
+
+// ==================== MIGRATIONS ====================
+
+// Add media column to orders if it doesn't exist
+try {
+  db.prepare('ALTER TABLE orders ADD COLUMN media TEXT').run();
+  console.log('Migration: Added media column to orders table');
+} catch (error) {
+  // Column already exists, ignore
+  if (!error.message.includes('duplicate column name')) {
+    console.error('Migration error:', error.message);
+  }
+}
+
+// Add items and comment columns to orders if they don't exist
+try {
+  db.prepare('ALTER TABLE orders ADD COLUMN items TEXT').run();
+  console.log('Migration: Added items column to orders table');
+} catch (error) {
+  if (!error.message.includes('duplicate column name')) {
+    console.error('Migration error:', error.message);
+  }
+}
+
+try {
+  db.prepare('ALTER TABLE orders ADD COLUMN comment TEXT').run();
+  console.log('Migration: Added comment column to orders table');
+} catch (error) {
+  if (!error.message.includes('duplicate column name')) {
+    console.error('Migration error:', error.message);
+  }
+}
 
 // ==================== AUTH ====================
 
@@ -266,6 +301,9 @@ app.get('/api/user', authMiddleware, (req, res) => {
         formats: JSON.parse(o.formats || '[]'),
         description: o.description,
         refs: o.refs,
+        media: JSON.parse(o.media || '[]'),
+        items: JSON.parse(o.items || '[]'),
+        comment: o.comment,
         basePrice: o.base_price,
         discount: o.discount,
         cashbackUsed: o.cashback_used,
@@ -340,8 +378,8 @@ app.post('/api/orders', authMiddleware, (req, res) => {
     
     // Insert order
     db.prepare(`
-      INSERT INTO orders (id, user_id, service, niche, formats, description, refs, base_price, discount, cashback_used, total, cashback_earned, status, tx_hash, payment_method)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+      INSERT INTO orders (id, user_id, service, niche, formats, description, refs, media, base_price, discount, cashback_used, total, cashback_earned, status, tx_hash, payment_method)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
     `).run(
       orderId,
       user.id,
@@ -350,6 +388,7 @@ app.post('/api/orders', authMiddleware, (req, res) => {
       JSON.stringify(order.formats || []),
       order.description || '',
       order.refs || '',
+      JSON.stringify(order.media || []),
       order.basePrice,
       order.discount,
       order.cashbackUsed || 0,
@@ -406,6 +445,62 @@ app.post('/api/orders', authMiddleware, (req, res) => {
     res.json({ success: true, orderId });
   } catch (error) {
     console.error('Error creating order:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Create cart order (new order system with items)
+app.post('/api/cart-orders', authMiddleware, (req, res) => {
+  try {
+    const tgUser = req.telegramUser;
+    const user = db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(tgUser.id.toString());
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const orderData = req.body;
+    const orderId = orderData.id || ('ORD' + Date.now());
+
+    // Insert cart order with items
+    db.prepare(`
+      INSERT INTO orders (id, user_id, items, comment, total, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      orderId,
+      user.id,
+      JSON.stringify(orderData.items || []),
+      orderData.comment || '',
+      orderData.total,
+      'awaiting_manager',
+      new Date().toISOString()
+    );
+
+    // Add notification to user
+    db.prepare(`
+      INSERT INTO notifications (user_id, title, message)
+      VALUES (?, ?, ?)
+    `).run(user.id, '📤 Заказ отправлен', `Заказ #${orderId} отправлен менеджеру. Ожидайте ответа.`);
+
+    // Format items list for admin notification
+    const itemsList = orderData.items.map(item =>
+      `  • ${item.name} x${item.quantity} - $${item.total}`
+    ).join('\n');
+
+    // Notify admin about new cart order
+    notifyAdmin(
+      `🛒 Новый заказ из корзины #${orderId}\n\n` +
+      `👤 Клиент: ${user.name} (@${user.username || 'no username'})\n` +
+      `Telegram ID: ${user.telegram_id}\n\n` +
+      `📦 Товары:\n${itemsList}\n\n` +
+      `💰 Итого: $${orderData.total}\n` +
+      `${orderData.comment ? `💬 Комментарий: ${orderData.comment}\n` : ''}\n` +
+      `⚡ Требуется создать инвойс в админ-панели`
+    );
+
+    res.json({ success: true, orderId });
+  } catch (error) {
+    console.error('Error creating cart order:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });

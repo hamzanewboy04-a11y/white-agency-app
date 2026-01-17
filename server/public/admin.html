@@ -348,6 +348,19 @@
     </div>
   </div>
 
+  <!-- User Activity Modal -->
+  <div id="activityModal" class="fixed inset-0 bg-black/90 z-50 hidden items-center justify-center p-4">
+    <div class="glass rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto border border-gray-800">
+      <div class="sticky top-0 glass p-4 border-b border-gray-800 flex items-center justify-between">
+        <h3 class="font-medium">История активности пользователя</h3>
+        <button onclick="closeActivityModal()" class="text-gray-500 hover:text-white">✕</button>
+      </div>
+      <div id="activityModalContent" class="p-6">
+        <!-- Content loaded dynamically -->
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Container -->
   <div id="toastContainer" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
 
@@ -857,6 +870,9 @@
               <button onclick="addCashback(${user.id}, '${user.name || 'Пользователь'}')" class="bg-green-800 hover:bg-green-700 px-3 py-2 rounded-lg text-sm transition" title="Добавить кешбек">
                 💰
               </button>
+              <button onclick="showUserActivity(${user.id}, '${user.name || 'Пользователь'}')" class="bg-blue-800 hover:bg-blue-700 px-3 py-2 rounded-lg text-sm transition" title="История активности">
+                📊
+              </button>
             </div>
           </div>
         </div>
@@ -1040,6 +1056,103 @@
     function closeOrderModal() {
       document.getElementById('orderModal').classList.add('hidden');
       document.getElementById('orderModal').classList.remove('flex');
+    }
+
+    // User Activity Modal
+    function showUserActivity(userId, userName) {
+      const userOrders = ordersData.filter(o => o.user_id === userId).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      const user = usersData.find(u => u.id === userId);
+
+      if (!user) {
+        showToast('Пользователь не найден', 'error');
+        return;
+      }
+
+      document.getElementById('activityModalContent').innerHTML = `
+        <div class="space-y-6">
+          <!-- User Info -->
+          <div class="glass rounded-xl p-4 border border-gray-800">
+            <div class="flex items-center gap-4 mb-4">
+              <div class="w-12 h-12 bg-gray-800 rounded-full flex items-center justify-center text-lg font-medium">
+                ${(userName || 'U').charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <div class="font-medium text-lg">${userName}</div>
+                <div class="text-sm text-gray-500">@${user.username || 'нет username'}</div>
+              </div>
+            </div>
+            <div class="grid grid-cols-4 gap-3 text-center">
+              <div>
+                <div class="text-xs text-gray-600 mb-1">Уровень</div>
+                <div class="font-medium ${getLevelColor(user.level)}">${(user.level || 'none').toUpperCase()}</div>
+              </div>
+              <div>
+                <div class="text-xs text-gray-600 mb-1">Всего заказов</div>
+                <div class="font-medium">${userOrders.length}</div>
+              </div>
+              <div>
+                <div class="text-xs text-gray-600 mb-1">Потрачено</div>
+                <div class="font-medium text-white">$${(user.total_spent || 0).toFixed(2)}</div>
+              </div>
+              <div>
+                <div class="text-xs text-gray-600 mb-1">Кешбэк</div>
+                <div class="font-medium text-green-400">$${(user.cashback || 0).toFixed(2)}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Orders History -->
+          <div>
+            <h4 class="text-sm text-gray-500 mb-3 uppercase tracking-wide">История заказов (${userOrders.length})</h4>
+            ${userOrders.length === 0 ? '<div class="text-center text-gray-500 py-8">Заказов пока нет</div>' : `
+              <div class="space-y-3">
+                ${userOrders.map(order => {
+                  let formatsStr = '-';
+                  try {
+                    const formats = JSON.parse(order.formats || '[]');
+                    formatsStr = formats.length > 0 ? formats.join(', ') : '-';
+                  } catch(e) {
+                    formatsStr = order.formats || '-';
+                  }
+
+                  return `
+                    <div class="glass rounded-xl p-4 border border-gray-800 hover:border-gray-700 cursor-pointer transition" onclick="openOrderModal('${order.id}')">
+                      <div class="flex items-start justify-between gap-4 mb-3">
+                        <div class="flex-1">
+                          <div class="flex items-center gap-2 mb-1">
+                            <span class="font-mono text-sm text-gray-400">#${order.id}</span>
+                            <span class="status-${order.status} px-2 py-0.5 rounded-full text-xs font-medium">
+                              ${getStatusText(order.status)}
+                            </span>
+                          </div>
+                          <div class="text-sm text-gray-500">${order.service} · ${order.niche}</div>
+                        </div>
+                        <div class="text-right">
+                          <div class="font-medium text-lg">$${order.total}</div>
+                          <div class="text-xs text-gray-600">${formatDate(order.created_at)}</div>
+                        </div>
+                      </div>
+                      ${order.description ? `
+                        <div class="text-xs text-gray-600 bg-gray-900/50 rounded p-2 mt-2">
+                          ${order.description.substring(0, 100)}${order.description.length > 100 ? '...' : ''}
+                        </div>
+                      ` : ''}
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            `}
+          </div>
+        </div>
+      `;
+
+      document.getElementById('activityModal').classList.remove('hidden');
+      document.getElementById('activityModal').classList.add('flex');
+    }
+
+    function closeActivityModal() {
+      document.getElementById('activityModal').classList.add('hidden');
+      document.getElementById('activityModal').classList.remove('flex');
     }
 
     // Actions
