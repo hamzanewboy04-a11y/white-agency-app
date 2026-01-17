@@ -970,10 +970,11 @@
         }
 
         function renderOrders() {
-            const container = document.getElementById('ordersList');
-            const orders = state.user.orders || [];
-            
-            if (orders.length === 0) {
+            try {
+                const container = document.getElementById('ordersList');
+                const orders = state.user.orders || [];
+
+                if (orders.length === 0) {
                 container.innerHTML = `
                     <div class="text-center py-8 text-gray-400">
                         <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -991,26 +992,52 @@
             container.innerHTML = orders.slice().reverse().map(order => {
                 const statusClasses = {
                     pending: 'bg-yellow-100 text-yellow-700 border-l-yellow-500',
+                    pending_verification: 'bg-yellow-100 text-yellow-700 border-l-yellow-500',
+                    verifying: 'bg-blue-100 text-blue-700 border-l-blue-500',
                     working: 'bg-blue-100 text-blue-700 border-l-blue-500',
-                    completed: 'bg-green-100 text-green-700 border-l-green-500'
+                    completed: 'bg-green-100 text-green-700 border-l-green-500',
+                    cancelled: 'bg-red-100 text-red-700 border-l-red-500'
                 };
                 const statusTexts = {
                     pending: '⏳ Ожидает',
+                    pending_verification: '⏳ На проверке',
+                    verifying: '🔍 Проверяется',
                     working: '🎨 В работе',
-                    completed: '✓ Готово'
+                    completed: '✓ Готово',
+                    cancelled: '❌ Отменён'
                 };
-                
+
+                // Fallback для неизвестных статусов
+                const statusClass = statusClasses[order.status] || 'bg-gray-100 text-gray-700 border-l-gray-500';
+                const statusText = statusTexts[order.status] || order.status;
+                const borderClass = statusClass.split(' ').pop();
+
+                // Безопасная обработка formats
+                let formatsText = '';
+                if (Array.isArray(order.formats)) {
+                    formatsText = order.formats.join(', ');
+                } else if (typeof order.formats === 'string') {
+                    try {
+                        const parsed = JSON.parse(order.formats);
+                        formatsText = Array.isArray(parsed) ? parsed.join(', ') : order.formats;
+                    } catch {
+                        formatsText = order.formats;
+                    }
+                } else {
+                    formatsText = 'Не указано';
+                }
+
                 return `
-                    <div class="card rounded-2xl p-4 border-l-4 ${statusClasses[order.status].split(' ').pop()}">
+                    <div class="card rounded-2xl p-4 border-l-4 ${borderClass}">
                         <div class="flex justify-between items-start mb-3">
                             <div>
-                                <span class="text-xs px-2 py-0.5 rounded-full ${statusClasses[order.status]} font-medium">${statusTexts[order.status]}</span>
-                                <h3 class="font-semibold mt-2">${order.service}</h3>
-                                <p class="text-xs text-gray-500">${order.niche} • ${order.formats.join(', ')}</p>
+                                <span class="text-xs px-2 py-0.5 rounded-full ${statusClass} font-medium">${statusText}</span>
+                                <h3 class="font-semibold mt-2">${order.service || 'Услуга'}</h3>
+                                <p class="text-xs text-gray-500">${order.niche || ''} • ${formatsText}</p>
                             </div>
                             <div class="text-right">
-                                <span class="text-lg font-bold">$${order.total.toFixed(2)}</span>
-                                <p class="text-xs text-green-600">+$${order.cashbackEarned.toFixed(2)} кешбэк</p>
+                                <span class="text-lg font-bold">$${(order.total || 0).toFixed(2)}</span>
+                                <p class="text-xs text-green-600">+$${(order.cashbackEarned || 0).toFixed(2)} кешбэк</p>
                             </div>
                         </div>
                         ${order.status === 'completed' ? `
@@ -1022,6 +1049,20 @@
                     </div>
                 `;
             }).join('');
+            } catch (error) {
+                console.error('Error rendering orders:', error);
+                const container = document.getElementById('ordersList');
+                if (container) {
+                    container.innerHTML = `
+                        <div class="text-center py-8 text-red-500">
+                            <p>⚠️ Ошибка загрузки заказов</p>
+                            <button onclick="location.reload()" class="mt-4 px-6 py-2 bg-black text-white rounded-full text-sm">
+                                Обновить страницу
+                            </button>
+                        </div>
+                    `;
+                }
+            }
         }
 
         function renderStats() {
