@@ -691,8 +691,12 @@
                         <span>🎁 Реферальная скидка (25%):</span>
                         <span id="cartReferralDiscountAmount">-$0.00</span>
                     </div>
+                    <div id="cartCashbackPayment" class="flex justify-between text-sm text-green-600 hidden">
+                        <span>💰 Оплата кешбэком:</span>
+                        <span id="cartCashbackPaymentAmount">-$0.00</span>
+                    </div>
                     <div class="flex justify-between items-center border-t pt-2">
-                        <span class="text-lg font-semibold">Итого:</span>
+                        <span class="text-lg font-semibold">К оплате:</span>
                         <span class="text-2xl font-bold" id="cartTotal">$0.00</span>
                     </div>
                 </div>
@@ -707,6 +711,29 @@
                     </div>
                     <p id="promoError" class="text-xs text-red-500 hidden"></p>
                     <p id="promoSuccess" class="text-xs text-green-600 hidden"></p>
+                </div>
+
+                <!-- Cashback Payment Option -->
+                <div id="cartCashbackSection" class="mt-4 space-y-3 hidden">
+                    <div class="card rounded-xl p-4 bg-gradient-to-r from-green-50 to-emerald-50">
+                        <div class="flex items-center justify-between mb-3">
+                            <div>
+                                <p class="text-sm font-medium text-gray-700">💰 Оплатить кешбэком</p>
+                                <p class="text-xs text-gray-500">Доступно: <span id="cartAvailableCashback" class="font-bold text-green-600">$0.00</span></p>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="cartUseCashback" class="sr-only peer" onchange="toggleCashbackPayment()">
+                                <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                            </label>
+                        </div>
+                        <div id="cartCashbackDetails" class="hidden">
+                            <p class="text-xs text-gray-600 mb-2">Будет списано до 50% от суммы заказа</p>
+                            <div class="flex justify-between text-sm">
+                                <span class="text-gray-700">К оплате кешбэком:</span>
+                                <span id="cartCashbackUsed" class="font-bold text-green-600">$0.00</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="mt-4 space-y-3">
@@ -2382,15 +2409,20 @@
             }));
 
             container.innerHTML = products.map((product, index) => {
+                const imageContent = product.image_url
+                    ? `<img src="${product.image_url}" alt="${product.name}" class="w-full h-full object-cover" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                       <div class="w-full h-full flex items-center justify-center text-3xl hidden">${product.icon}</div>`
+                    : `<div class="text-3xl">${product.icon}</div>`;
+
                 return `
                     <div class="card rounded-2xl p-4 hover:shadow-lg transition-shadow">
                         <div class="flex gap-4">
-                            <div class="w-16 h-16 bg-gradient-to-br from-gray-800 to-black rounded-xl flex items-center justify-center text-3xl flex-shrink-0">
-                                ${product.icon}
+                            <div class="w-16 h-16 bg-gradient-to-br from-gray-800 to-black rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden">
+                                ${imageContent}
                             </div>
                             <div class="flex-1">
                                 <h3 class="font-semibold text-base mb-1">${product.name}</h3>
-                                <p class="text-xs text-gray-500 mb-2">${product.desc}</p>
+                                <p class="text-xs text-gray-500 mb-2">${product.desc || product.description || ''}</p>
                                 <div class="flex items-center justify-between">
                                     <span class="text-2xl font-bold">$${product.price}</span>
                                     <button onclick="addToCart(${product.id})" class="px-4 py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors">
@@ -2538,11 +2570,31 @@
                 promoDiscount = (afterReferral * state.appliedPromo.discount_percent) / 100;
             }
 
-            const totalPrice = subtotal - referralDiscount - promoDiscount;
+            // Calculate cashback payment (up to 50% of order after discounts)
+            const userCashback = state.user?.cashback || 0;
+            const afterDiscounts = subtotal - referralDiscount - promoDiscount;
+            const maxCashbackUse = Math.min(userCashback, afterDiscounts * 0.5); // Max 50%
+
+            let cashbackUsed = 0;
+            if (document.getElementById('cartUseCashback')?.checked && maxCashbackUse > 0) {
+                cashbackUsed = maxCashbackUse;
+            }
+
+            const finalTotal = afterDiscounts - cashbackUsed;
+
+            // Show/hide cashback section
+            const cashbackSection = document.getElementById('cartCashbackSection');
+            if (cashbackSection && userCashback > 0) {
+                cashbackSection.classList.remove('hidden');
+                document.getElementById('cartAvailableCashback').textContent = `$${userCashback.toFixed(2)}`;
+                document.getElementById('cartCashbackUsed').textContent = `$${maxCashbackUse.toFixed(2)}`;
+            } else if (cashbackSection) {
+                cashbackSection.classList.add('hidden');
+            }
 
             document.getElementById('cartItemCount').textContent = totalItems;
             document.getElementById('cartSubtotal').textContent = `$${subtotal.toFixed(2)}`;
-            document.getElementById('cartTotal').textContent = `$${totalPrice.toFixed(2)}`;
+            document.getElementById('cartTotal').textContent = `$${finalTotal.toFixed(2)}`;
 
             // Show/hide promo discount
             if (state.appliedPromo) {
@@ -2559,6 +2611,27 @@
             } else {
                 document.getElementById('cartReferralDiscount').classList.add('hidden');
             }
+
+            // Show/hide cashback payment
+            if (cashbackUsed > 0) {
+                document.getElementById('cartCashbackPayment').classList.remove('hidden');
+                document.getElementById('cartCashbackPaymentAmount').textContent = `-$${cashbackUsed.toFixed(2)}`;
+            } else {
+                document.getElementById('cartCashbackPayment').classList.add('hidden');
+            }
+        }
+
+        function toggleCashbackPayment() {
+            const checkbox = document.getElementById('cartUseCashback');
+            const details = document.getElementById('cartCashbackDetails');
+
+            if (checkbox.checked) {
+                details.classList.remove('hidden');
+            } else {
+                details.classList.add('hidden');
+            }
+
+            renderCart(); // Recalculate totals
         }
 
         async function applyPromoCode() {
@@ -2642,7 +2715,17 @@
             }
 
             const totalDiscountAmount = referralDiscountAmount + promoDiscountAmount;
-            const totalPrice = subtotal - totalDiscountAmount;
+            const afterDiscounts = subtotal - totalDiscountAmount;
+
+            // Calculate cashback payment (up to 50% of order after discounts)
+            const userCashback = state.user?.cashback || 0;
+            const maxCashbackUse = Math.min(userCashback, afterDiscounts * 0.5);
+            let cashbackUsed = 0;
+            if (document.getElementById('cartUseCashback')?.checked && maxCashbackUse > 0) {
+                cashbackUsed = maxCashbackUse;
+            }
+
+            const totalPrice = afterDiscounts - cashbackUsed;
 
             const orderData = {
                 id: 'ORD' + Date.now(),
@@ -2652,6 +2735,7 @@
                 promo_code: promoCode,
                 discount_amount: totalDiscountAmount,
                 referral_discount: isReferred ? referralDiscountAmount : 0,
+                cashback_used: cashbackUsed,
                 subtotal: subtotal,
                 total: totalPrice,
                 status: 'awaiting_manager',
@@ -2671,6 +2755,14 @@
                 updateCartBadge();
                 document.getElementById('cartPromoCode').value = '';
                 document.getElementById('cartPromoCode').disabled = false;
+
+                // Reset cashback checkbox
+                const cashbackCheckbox = document.getElementById('cartUseCashback');
+                if (cashbackCheckbox) {
+                    cashbackCheckbox.checked = false;
+                    const details = document.getElementById('cartCashbackDetails');
+                    if (details) details.classList.add('hidden');
+                }
 
                 closeModal();
                 showToast('✅ Заказ отправлен менеджеру!');

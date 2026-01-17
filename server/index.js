@@ -228,6 +228,16 @@ try {
   }
 }
 
+// Add image_url column to products if it doesn't exist
+try {
+  db.prepare('ALTER TABLE products ADD COLUMN image_url TEXT').run();
+  console.log('Migration: Added image_url column to products table');
+} catch (error) {
+  if (!error.message.includes('duplicate column name')) {
+    console.error('Migration error:', error.message);
+  }
+}
+
 // Seed initial products if table is empty
 const productCount = db.prepare('SELECT COUNT(*) as count FROM products').get();
 if (productCount.count === 0) {
@@ -557,11 +567,24 @@ app.post('/api/cart-orders', authMiddleware, (req, res) => {
 
     const orderData = req.body;
     const orderId = orderData.id || ('ORD' + Date.now());
+    const cashbackUsed = orderData.cashback_used || 0;
+
+    // Validate cashback usage
+    if (cashbackUsed > 0) {
+      if (cashbackUsed > user.cashback) {
+        return res.status(400).json({ error: 'Insufficient cashback balance' });
+      }
+      const afterDiscounts = orderData.subtotal - (orderData.discount_amount || 0);
+      const maxAllowed = afterDiscounts * 0.5;
+      if (cashbackUsed > maxAllowed) {
+        return res.status(400).json({ error: 'Cashback usage exceeds 50% limit' });
+      }
+    }
 
     // Insert cart order with items
     db.prepare(`
-      INSERT INTO orders (id, user_id, items, comment, promo_code, discount_amount, subtotal, total, status, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO orders (id, user_id, items, comment, promo_code, discount_amount, cashback_used, subtotal, total, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       orderId,
       user.id,
@@ -569,13 +592,28 @@ app.post('/api/cart-orders', authMiddleware, (req, res) => {
       orderData.comment || '',
       orderData.promo_code || null,
       orderData.discount_amount || 0,
+      cashbackUsed,
       orderData.subtotal || orderData.total,
       orderData.total,
       'awaiting_manager',
       new Date().toISOString()
     );
 
-    // NOTE: Cashback and referral bonuses will be added AFTER payment confirmation
+    // Deduct cashback from user balance if used
+    if (cashbackUsed > 0) {
+      db.prepare(`
+        UPDATE users SET cashback = cashback - ?
+        WHERE id = ?
+      `).run(cashbackUsed, user.id);
+
+      // Add to cashback history
+      db.prepare(`
+        INSERT INTO cashback_history (user_id, amount, description)
+        VALUES (?, ?, ?)
+      `).run(user.id, -cashbackUsed, `Оплата кешбэком за заказ #${orderId}`);
+    }
+
+    // NOTE: Cashback earnings and referral bonuses will be added AFTER payment confirmation
     // in the payment verification endpoint
 
     // Add notification to user
@@ -594,6 +632,11 @@ app.post('/api/cart-orders', authMiddleware, (req, res) => {
       ? `🎫 Промокод: ${orderData.promo_code} (-$${orderData.discount_amount})\n`
       : '';
 
+    // Build cashback info for notification
+    const cashbackInfo = cashbackUsed > 0
+      ? `💰 Оплачено кешбэком: $${cashbackUsed.toFixed(2)}\n`
+      : '';
+
     // Notify admin about new cart order
     notifyAdmin(
       `🛒 Новый заказ из корзины #${orderId}\n\n` +
@@ -601,7 +644,8 @@ app.post('/api/cart-orders', authMiddleware, (req, res) => {
       `Telegram ID: ${user.telegram_id}\n\n` +
       `📦 Товары:\n${itemsList}\n\n` +
       `${promoInfo}` +
-      `💰 Итого: $${orderData.total}\n` +
+      `${cashbackInfo}` +
+      `💰 К оплате: $${orderData.total}\n` +
       `${orderData.comment ? `💬 Комментарий: ${orderData.comment}\n` : ''}\n` +
       `⚡ Требуется создать инвойс в админ-панели`
     );
@@ -1928,10 +1972,29 @@ app.post('/api/admin/withdrawals/:id/cancel', adminAuthMiddleware, (req, res) =>
 
     // Notify user
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(withdrawal.user_id);
+    const notificationMessage = `Выплата $${withdrawal.amount} отменена. ${reason || 'Обратитесь к менеджеру'}`;
+
     db.prepare(`
       INSERT INTO notifications (user_id, title, message)
       VALUES (?, ?, ?)
-    `).run(user.id, '❌ Выплата отменена', `Выплата $${withdrawal.amount} отменена. ${reason || 'Обратитесь к менеджеру'}`);
+    `).run(user.id, '❌ Выплата отменена', notificationMessage);
+
+    // Send Telegram notification
+    bot.telegram.sendMessage(
+      user.telegram_id,
+      `❌ *Выплата отменена*\n\n` +
+      `Сумма: $${withdrawal.amount.toFixed(2)}\n` +
+      `Причина: ${reason || 'Не указана'}\n\n` +
+      `Если у вас есть вопросы, обратитесь к менеджеру.`,
+      {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '💬 Написать менеджеру', url: `https://t.me/${process.env.SUPPORT_USERNAME || 'support'}` }
+          ]]
+        }
+      }
+    ).catch(err => console.error('Failed to send withdrawal cancellation notification:', err.message));
 
     res.json({ success: true });
   } catch (error) {
