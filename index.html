@@ -41,6 +41,7 @@
             --tg-theme-secondary-bg-color: #2a2a2a;
         }
 
+        /* Dark theme improvements */
         body.dark .card {
             border: 1px solid rgba(255,255,255,0.1);
         }
@@ -50,12 +51,36 @@
         body.dark select {
             background: #2a2a2a;
             color: #ffffff;
-            border-color: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.2);
         }
 
         body.dark input::placeholder,
         body.dark textarea::placeholder {
             color: #888888;
+        }
+
+        body.dark .text-gray-700 {
+            color: #e0e0e0;
+        }
+
+        body.dark .text-gray-500 {
+            color: #aaaaaa;
+        }
+
+        body.dark .text-gray-400 {
+            color: #999999;
+        }
+
+        body.dark .border-gray-100 {
+            border-color: rgba(255,255,255,0.1);
+        }
+
+        body.dark .bg-gray-100 {
+            background-color: #2a2a2a;
+        }
+
+        body.dark .hover\:bg-gray-100:hover {
+            background-color: #3a3a3a;
         }
         
         .card {
@@ -425,15 +450,10 @@
                 <label class="text-sm font-medium text-gray-700 mb-2 block">Референсы (ссылки)</label>
                 <input type="text" id="orderRefs" class="w-full px-4 py-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-black" placeholder="Ссылка на пример">
             </div>
-
             <div>
                 <label class="text-sm font-medium text-gray-700 mb-2 block">Медиа-файлы (опционально)</label>
-                <div class="space-y-2">
-                    <input type="text" id="orderMediaLinks" class="w-full px-4 py-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-black" placeholder="Ссылки на файлы (Google Drive, Dropbox и т.д.)">
-                    <div class="text-xs text-gray-500">
-                        📎 Вставьте ссылки на медиа-файлы через запятую
-                    </div>
-                </div>
+                <input type="text" id="orderMedia" class="w-full px-4 py-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-black" placeholder="Ссылки на файлы (Google Drive, Dropbox)">
+                <div class="text-xs text-gray-500 mt-1">Вставьте ссылки на медиа-файлы через запятую</div>
             </div>
 
             <!-- Order Summary -->
@@ -745,7 +765,12 @@
                 <div>
                     <label class="text-sm font-medium text-gray-700 mb-2 block">Хеш транзакции (TxID)</label>
                     <input type="text" id="txHash" placeholder="Вставьте хеш после оплаты..." class="w-full px-4 py-3 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-green-500">
-                    <p class="text-xs text-gray-400 mt-1">Найдите в истории вашего кошелька после отправки</p>
+                    <div class="flex items-center justify-between mt-2">
+                        <p class="text-xs text-gray-400">Найдите в истории вашего кошелька</p>
+                        <button type="button" onclick="checkTronScan()" class="text-xs text-blue-600 hover:text-blue-700">
+                            🔍 Проверить на TronScan
+                        </button>
+                    </div>
                 </div>
                 
                 <button onclick="confirmUsdtPayment()" id="confirmUsdtBtn" class="w-full py-4 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
@@ -808,29 +833,12 @@
         let state = {
             user: null,
             tgUser: null,
-            isLoading: true
+            isLoading: true,
+            appSettings: null
         };
 
         // ==================== TELEGRAM WEBAPP ====================
         const tg = window.Telegram?.WebApp;
-
-        // ==================== TON CONNECT ====================
-        let tonConnectUI = null;
-        const TON_ADDRESS = 'UQDqWKqWEE4h8D2bGNXGYjPzYfYJfCO3q_K8a_8KxvKGcxiK'; // Replace with your TON wallet address
-
-        function initTonConnect() {
-            try {
-                if (typeof TON_CONNECT_UI !== 'undefined') {
-                    tonConnectUI = new TON_CONNECT_UI.TonConnectUI({
-                        manifestUrl: 'https://white-agency-app.vercel.app/tonconnect-manifest.json',
-                        buttonRootId: 'ton-connect-button'
-                    });
-                    console.log('TON Connect initialized');
-                }
-            } catch (error) {
-                console.error('Failed to initialize TON Connect:', error);
-            }
-        }
 
         function initTelegram() {
             if (!tg) {
@@ -937,12 +945,38 @@
             localStorage.setItem('whiteagency_user', JSON.stringify(state.user));
 
             if (CONFIG.API_URL) {
-                // Only send name and trc20Wallet as the server expects
-                apiRequest('/api/user', 'POST', {
-                    name: state.user.name,
-                    trc20Wallet: state.user.trc20Wallet
-                });
+                apiRequest('/api/user', 'POST', state.user);
             }
+        }
+
+        async function loadAppSettings() {
+            try {
+                if (CONFIG.API_URL) {
+                    const settings = await apiRequest('/api/settings');
+                    if (settings && settings.services) {
+                        state.appSettings = settings;
+                        // Update CONFIG.PRICES with server settings
+                        CONFIG.PRICES = settings.services;
+                        // Update service select dropdown
+                        updateServiceOptions();
+                        // Update prices modal
+                        renderPrices();
+                        console.log('App settings loaded from server');
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load app settings:', error);
+                // Use default CONFIG.PRICES if API fails
+            }
+        }
+
+        function updateServiceOptions() {
+            const select = document.getElementById('serviceType');
+            if (!select) return;
+
+            select.innerHTML = CONFIG.PRICES.map(service =>
+                `<option value="${service.price}">${service.name} (от $${service.price})</option>`
+            ).join('');
         }
 
         function generateRefCode() {
@@ -1019,10 +1053,11 @@
         }
 
         function renderOrders() {
-            const container = document.getElementById('ordersList');
-            const orders = state.user.orders || [];
-            
-            if (orders.length === 0) {
+            try {
+                const container = document.getElementById('ordersList');
+                const orders = state.user.orders || [];
+
+                if (orders.length === 0) {
                 container.innerHTML = `
                     <div class="text-center py-8 text-gray-400">
                         <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1040,26 +1075,52 @@
             container.innerHTML = orders.slice().reverse().map(order => {
                 const statusClasses = {
                     pending: 'bg-yellow-100 text-yellow-700 border-l-yellow-500',
+                    pending_verification: 'bg-yellow-100 text-yellow-700 border-l-yellow-500',
+                    verifying: 'bg-blue-100 text-blue-700 border-l-blue-500',
                     working: 'bg-blue-100 text-blue-700 border-l-blue-500',
-                    completed: 'bg-green-100 text-green-700 border-l-green-500'
+                    completed: 'bg-green-100 text-green-700 border-l-green-500',
+                    cancelled: 'bg-red-100 text-red-700 border-l-red-500'
                 };
                 const statusTexts = {
                     pending: '⏳ Ожидает',
+                    pending_verification: '⏳ На проверке',
+                    verifying: '🔍 Проверяется',
                     working: '🎨 В работе',
-                    completed: '✓ Готово'
+                    completed: '✓ Готово',
+                    cancelled: '❌ Отменён'
                 };
-                
+
+                // Fallback для неизвестных статусов
+                const statusClass = statusClasses[order.status] || 'bg-gray-100 text-gray-700 border-l-gray-500';
+                const statusText = statusTexts[order.status] || order.status;
+                const borderClass = statusClass.split(' ').pop();
+
+                // Безопасная обработка formats
+                let formatsText = '';
+                if (Array.isArray(order.formats)) {
+                    formatsText = order.formats.join(', ');
+                } else if (typeof order.formats === 'string') {
+                    try {
+                        const parsed = JSON.parse(order.formats);
+                        formatsText = Array.isArray(parsed) ? parsed.join(', ') : order.formats;
+                    } catch {
+                        formatsText = order.formats;
+                    }
+                } else {
+                    formatsText = 'Не указано';
+                }
+
                 return `
-                    <div class="card rounded-2xl p-4 border-l-4 ${statusClasses[order.status].split(' ').pop()}">
+                    <div class="card rounded-2xl p-4 border-l-4 ${borderClass}">
                         <div class="flex justify-between items-start mb-3">
                             <div>
-                                <span class="text-xs px-2 py-0.5 rounded-full ${statusClasses[order.status]} font-medium">${statusTexts[order.status]}</span>
-                                <h3 class="font-semibold mt-2">${order.service}</h3>
-                                <p class="text-xs text-gray-500">${order.niche} • ${order.formats.join(', ')}</p>
+                                <span class="text-xs px-2 py-0.5 rounded-full ${statusClass} font-medium">${statusText}</span>
+                                <h3 class="font-semibold mt-2">${order.service || 'Услуга'}</h3>
+                                <p class="text-xs text-gray-500">${order.niche || ''} • ${formatsText}</p>
                             </div>
                             <div class="text-right">
-                                <span class="text-lg font-bold">$${order.total.toFixed(2)}</span>
-                                <p class="text-xs text-green-600">+$${order.cashbackEarned.toFixed(2)} кешбэк</p>
+                                <span class="text-lg font-bold">$${(order.total || 0).toFixed(2)}</span>
+                                <p class="text-xs text-green-600">+$${(order.cashbackEarned || 0).toFixed(2)} кешбэк</p>
                             </div>
                         </div>
                         ${order.status === 'completed' ? `
@@ -1071,6 +1132,20 @@
                     </div>
                 `;
             }).join('');
+            } catch (error) {
+                console.error('Error rendering orders:', error);
+                const container = document.getElementById('ordersList');
+                if (container) {
+                    container.innerHTML = `
+                        <div class="text-center py-8 text-red-500">
+                            <p>⚠️ Ошибка загрузки заказов</p>
+                            <button onclick="location.reload()" class="mt-4 px-6 py-2 bg-black text-white rounded-full text-sm">
+                                Обновить страницу
+                            </button>
+                        </div>
+                    `;
+                }
+            }
         }
 
         function renderStats() {
@@ -1126,23 +1201,30 @@
 
         function renderPrices() {
             const level = CONFIG.LEVELS[state.user?.level] || CONFIG.LEVELS.none;
-            document.getElementById('priceDiscount').textContent = `-${level.discount}%`;
-            
-            document.getElementById('pricesList').innerHTML = CONFIG.PRICES.map(p => {
-                const discounted = p.price * (1 - level.discount / 100);
-                return `
-                    <div class="flex justify-between items-center py-3 border-b border-gray-100">
-                        <div>
-                            <p class="font-medium">${p.name}</p>
-                            <p class="text-xs text-gray-400">${p.desc}</p>
+            const discountEl = document.getElementById('priceDiscount');
+            const listEl = document.getElementById('pricesList');
+
+            if (discountEl) {
+                discountEl.textContent = `-${level.discount}%`;
+            }
+
+            if (listEl) {
+                listEl.innerHTML = CONFIG.PRICES.map(p => {
+                    const discounted = p.price * (1 - level.discount / 100);
+                    return `
+                        <div class="flex justify-between items-center py-3 border-b border-gray-100">
+                            <div>
+                                <p class="font-medium">${p.name}</p>
+                                <p class="text-xs text-gray-400">${p.desc}</p>
+                            </div>
+                            <div class="text-right">
+                                ${level.discount > 0 ? `<p class="text-gray-400 line-through text-sm">$${p.price}</p>` : ''}
+                                <p class="font-bold text-green-600">$${discounted.toFixed(2)}</p>
+                            </div>
                         </div>
-                        <div class="text-right">
-                            ${level.discount > 0 ? `<p class="text-gray-400 line-through text-sm">$${p.price}</p>` : ''}
-                            <p class="font-bold text-green-600">$${discounted.toFixed(2)}</p>
-                        </div>
-                    </div>
-                `;
-            }).join('');
+                    `;
+                }).join('');
+            }
         }
 
         // ==================== MODALS ====================
@@ -1177,22 +1259,12 @@
             document.getElementById('cashbackModalBalance').textContent = `$${state.user.cashback.toFixed(2)}`;
             renderCashbackHistory();
         }
-        async function showNotifications() {
-            try {
-                showModal('notifModal');
-                renderNotifications();
-                state.user.notifications.forEach(n => n.read = true);
-                document.getElementById('notifDot').style.display = 'none';
-
-                // Mark as read on server
-                if (CONFIG.API_URL) {
-                    await apiRequest('/api/notifications/read', 'POST');
-                }
-
-                saveUserData();
-            } catch (error) {
-                console.error('Error showing notifications:', error);
-            }
+        function showNotifications() { 
+            showModal('notifModal');
+            renderNotifications();
+            state.user.notifications.forEach(n => n.read = true);
+            saveUserData();
+            document.getElementById('notifDot').style.display = 'none';
         }
 
         function showChat() {
@@ -1328,7 +1400,7 @@
                 formats: selectedFormats.length > 0 ? selectedFormats : ['Не указано'],
                 description: document.getElementById('orderDescription').value,
                 refs: document.getElementById('orderRefs').value,
-                mediaLinks: document.getElementById('orderMediaLinks').value,
+                media: document.getElementById('orderMedia').value,
                 basePrice,
                 discount: discountAmount,
                 cashbackUsed,
@@ -1376,58 +1448,37 @@
             });
         }
 
-        async function submitReview() {
+        function submitReview() {
             if (currentRating === 0) {
                 showToast('Поставьте оценку');
                 return;
             }
-
+            
             const orderId = document.getElementById('reviewOrderId').value;
             const reviewText = document.getElementById('reviewText').value;
-
-            try {
-                // Send to server
-                if (CONFIG.API_URL) {
-                    const result = await apiRequest('/api/reviews', 'POST', {
-                        orderId: orderId,
-                        rating: currentRating,
-                        text: reviewText
-                    });
-                    if (result && result.success) {
-                        showToast('✅ Отзыв отправлен! +$' + (result.bonus || CONFIG.REVIEW_BONUS) + ' кешбэка');
-                        // Reload user data to get updated cashback
-                        await loadUserData();
-                    } else {
-                        showToast('⚠️ Не удалось отправить отзыв на сервер');
-                    }
-                }
-
-                const order = state.user.orders.find(o => o.id === orderId);
-                if (order) order.reviewed = true;
-
-                state.user.cashback += CONFIG.REVIEW_BONUS;
-                state.user.cashbackHistory.push({
-                    amount: CONFIG.REVIEW_BONUS,
-                    description: 'Бонус за отзыв',
-                    date: new Date().toISOString()
-                });
-
-                saveUserData();
-                updateUI();
-
-                currentRating = 0;
-                document.querySelectorAll('.rating-star').forEach(star => {
-                    star.classList.add('text-gray-300');
-                    star.classList.remove('text-yellow-400');
-                });
-                document.getElementById('reviewText').value = '';
-                document.getElementById('reviewOrderId').value = '';
-
-                closeModal();
-            } catch (error) {
-                console.error('Error submitting review:', error);
-                showToast('❌ Ошибка при отправке отзыва');
-            }
+            
+            const order = state.user.orders.find(o => o.id === orderId);
+            if (order) order.reviewed = true;
+            
+            state.user.cashback += CONFIG.REVIEW_BONUS;
+            state.user.cashbackHistory.push({
+                amount: CONFIG.REVIEW_BONUS,
+                description: 'Бонус за отзыв',
+                date: new Date().toISOString()
+            });
+            
+            saveUserData();
+            updateUI();
+            
+            currentRating = 0;
+            document.querySelectorAll('.rating-star').forEach(star => {
+                star.classList.add('text-gray-300');
+                star.classList.remove('text-yellow-400');
+            });
+            document.getElementById('reviewText').value = '';
+            document.getElementById('reviewOrderId').value = '';
+            
+            closeModal();
             showToast(`⭐ Спасибо за отзыв! +$${CONFIG.REVIEW_BONUS} на кешбэк`);
             
             if (tg) tg.HapticFeedback.notificationOccurred('success');
@@ -1469,36 +1520,14 @@
         }
 
         // ==================== PROMO ====================
-        async function applyPromo() {
+        function applyPromo() {
             const promo = document.getElementById('promoInput').value.trim();
             if (!promo) return;
-
-            try {
-                // Send to server
-                if (CONFIG.API_URL) {
-                    const result = await apiRequest('/api/referral/apply', 'POST', { code: promo });
-                    if (result && result.success) {
-                        showToast('✅ Промокод применён! Скидка ' + (result.discount || 15) + '%');
-                        document.getElementById('promoInput').value = '';
-                        // Reload user data to get updated info
-                        await loadUserData();
-                        if (tg) tg.HapticFeedback.notificationOccurred('success');
-                        return;
-                    } else {
-                        showToast('❌ Неверный промокод или он уже использован');
-                        if (tg) tg.HapticFeedback.notificationOccurred('error');
-                        return;
-                    }
-                }
-
-                showToast('✅ Промокод применён!');
-                document.getElementById('promoInput').value = '';
-
-                if (tg) tg.HapticFeedback.notificationOccurred('success');
-            } catch (error) {
-                console.error('Error applying promo:', error);
-                showToast('❌ Ошибка при применении промокода');
-            }
+            
+            showToast('✅ Промокод применён!');
+            document.getElementById('promoInput').value = '';
+            
+            if (tg) tg.HapticFeedback.notificationOccurred('success');
         }
 
         function copyPromo() {
@@ -1561,8 +1590,17 @@
         // ==================== INIT ====================
         async function init() {
             initTelegram();
-            initTonConnect();
-            await loadUserData();
+
+            // Load user data and app settings in parallel
+            await Promise.all([
+                loadUserData(),
+                loadAppSettings()
+            ]);
+
+            // Initialize TON Connect in background (don't block app loading)
+            setTimeout(() => {
+                initTonConnect();
+            }, 500);
 
             document.getElementById('loadingScreen').style.display = 'none';
             state.isLoading = false;
@@ -1580,7 +1618,25 @@
         let currentPaymentMethod = 'ton';
         let pendingOrder = null;
         const USDT_ADDRESS = 'TUgg2zUetS8JicSZNSxpTnGeA2hPGfVt9Q';
-        const TON_ADDRESS = 'UQxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+        const TON_ADDRESS = 'UQDqWKqWEE4h8D2bGNXGYjPzYfYJfCO3q_K8a_8KxvKGcxiK'; // Replace with your TON wallet
+
+        // TON Connect initialization
+        let tonConnectUI = null;
+
+        function initTonConnect() {
+            try {
+                if (typeof window.TON_CONNECT_UI !== 'undefined') {
+                    tonConnectUI = new window.TON_CONNECT_UI.TonConnectUI({
+                        manifestUrl: 'https://raw.githubusercontent.com/ton-connect/demo-dapp-with-wallet/master/public/tonconnect-manifest.json'
+                    });
+                    console.log('TON Connect initialized');
+                } else {
+                    console.log('TON Connect UI not available');
+                }
+            } catch (error) {
+                console.error('Failed to initialize TON Connect:', error);
+            }
+        }
         
         function selectPaymentMethod(method) {
             currentPaymentMethod = method;
@@ -1619,30 +1675,35 @@
         });
         
         async function payWithTon() {
-            if (typeof TON_CONNECT_UI !== 'undefined') {
+            if (tonConnectUI && tonConnectUI.connected) {
                 try {
+                    const tonAmount = (pendingOrder.total / 2.5).toFixed(2);
                     const transaction = {
                         validUntil: Math.floor(Date.now() / 1000) + 600,
                         messages: [{
                             address: TON_ADDRESS,
-                            amount: (pendingOrder.total * 1e9 / 2.5).toString(),
+                            amount: (tonAmount * 1e9).toString(),
                         }]
                     };
                     const result = await tonConnectUI.sendTransaction(transaction);
-                    completeOrder(result.boc);
+                    if (result && result.boc) {
+                        completeOrder(result.boc);
+                    }
                 } catch (e) {
+                    console.error('TON payment error:', e);
                     showToast('❌ Оплата отменена');
                 }
             } else {
+                // Fallback to TON deep link
                 const tonAmount = (pendingOrder.total / 2.5).toFixed(2);
-                const url = `ton://transfer/${TON_ADDRESS}?amount=${tonAmount * 1e9}&text=Order_${Date.now()}`;
-                
+                const url = `ton://transfer/${TON_ADDRESS}?amount=${tonAmount * 1e9}&text=Order_${pendingOrder.id}`;
+
                 if (tg) {
                     tg.openLink(url);
                 } else {
                     window.open(url, '_blank');
                 }
-                
+
                 showToast('💎 Откройте кошелёк и подтвердите');
                 setTimeout(() => {
                     selectPaymentMethod('usdt');
@@ -1651,11 +1712,23 @@
             }
         }
         
+        function checkTronScan() {
+            const txHash = document.getElementById('txHash').value.trim();
+            if (!txHash) {
+                showToast('Введите хеш транзакции');
+                return;
+            }
+
+            const url = `https://tronscan.org/#/transaction/${txHash}`;
+            if (tg) {
+                tg.openLink(url);
+            } else {
+                window.open(url, '_blank');
+            }
+        }
+
         function confirmUsdtPayment() {
             const txHash = document.getElementById('txHash').value.trim();
-
-            // Validate TRC20 transaction hash format (64 hex characters)
-            const trc20HashPattern = /^[a-fA-F0-9]{64}$/;
 
             if (!txHash) {
                 showToast('❌ Введите хеш транзакции');
@@ -1667,71 +1740,66 @@
                 return;
             }
 
+            // Validate TRC20 hash format (64 hex characters)
+            const trc20HashPattern = /^[a-fA-F0-9]{64}$/;
+
             if (!trc20HashPattern.test(txHash)) {
-                showToast('⚠️ Хеш не соответствует формату TRC20. Проверьте правильность.');
-                // Allow non-standard format but show warning
+                showToast('⚠️ Формат не соответствует TRC20. Проверьте правильность');
+                // Allow to continue even with non-standard format
             }
 
             completeOrder(txHash);
         }
         
-        async function completeOrder(txHash) {
+        function completeOrder(txHash) {
             if (!pendingOrder) return;
 
-            try {
-                pendingOrder.txHash = txHash;
-                pendingOrder.paymentMethod = currentPaymentMethod;
-                pendingOrder.paymentStatus = 'verifying'; // verifying, paid, processing, completed, cancelled
+            pendingOrder.txHash = txHash;
+            pendingOrder.paymentMethod = currentPaymentMethod;
+            pendingOrder.paymentStatus = 'pending_verification';
 
-                // Send order to server first
-                if (CONFIG.API_URL) {
-                    const result = await apiRequest('/api/orders', 'POST', pendingOrder);
-                    if (result && result.success) {
-                        console.log('Order sent to server successfully');
-                    } else {
-                        console.error('Failed to send order to server');
-                        showToast('⚠️ Заказ сохранен локально, но не отправлен на сервер');
-                    }
-                }
-
-                state.user.orders.push(pendingOrder);
-                state.user.totalSpent += pendingOrder.total;
-
-                // Only deduct used cashback, DO NOT add earned cashback yet (wait for order completion)
-                state.user.cashback -= pendingOrder.cashbackUsed || 0;
-
-                if (pendingOrder.cashbackUsed > 0) {
-                    state.user.cashbackHistory.push({
-                        amount: -pendingOrder.cashbackUsed,
-                        description: `Оплата заказа #${pendingOrder.id}`,
-                        date: new Date().toISOString()
-                    });
-                }
-
-                updateUserLevel();
-
-                state.user.notifications.push({
-                    title: '📦 Заказ оформлен',
-                    message: `Заказ #${pendingOrder.id} ожидает подтверждения оплаты`,
-                    date: new Date().toISOString(),
-                    read: false
+            // Send to server
+            if (CONFIG.API_URL) {
+                apiRequest('/api/orders', 'POST', pendingOrder).catch(err => {
+                    console.error('Failed to send order to server:', err);
                 });
-
-                saveUserData();
-                updateUI();
-
-                pendingOrder = null;
-                document.getElementById('txHash').value = '';
-                document.getElementById('confirmUsdtBtn').disabled = true;
-
-                closeModal();
-                showToast('✅ Заказ оформлен! Ожидайте подтверждения оплаты');
-
-                if (tg) tg.HapticFeedback.notificationOccurred('success');
-            } catch (error) {
-                console.error('Error completing order:', error);
-                showToast('❌ Ошибка при оформлении заказа');
             }
+
+            state.user.orders.push(pendingOrder);
+            state.user.totalSpent += pendingOrder.total;
+
+            // Only deduct used cashback, DON'T add earned cashback yet
+            state.user.cashback -= pendingOrder.cashbackUsed || 0;
+
+            if (pendingOrder.cashbackUsed > 0) {
+                state.user.cashbackHistory.push({
+                    amount: -pendingOrder.cashbackUsed,
+                    description: `Оплата заказа #${pendingOrder.id}`,
+                    date: new Date().toISOString()
+                });
+            }
+            // Cashback will be added by admin when order is completed
+
+            updateUserLevel();
+            
+            state.user.notifications.push({
+                title: '📦 Заказ оформлен',
+                message: `Заказ #${pendingOrder.id} ожидает подтверждения оплаты`,
+                date: new Date().toISOString(),
+                read: false
+            });
+            
+            saveUserData();
+            updateUI();
+            
+            pendingOrder = null;
+            document.getElementById('txHash').value = '';
+            document.getElementById('confirmUsdtBtn').disabled = true;
+            
+            closeModal();
+            showToast('✅ Заказ оформлен! Ожидайте подтверждения оплаты');
+            
+            if (tg) tg.HapticFeedback.notificationOccurred('success');
         }
 
         init();
