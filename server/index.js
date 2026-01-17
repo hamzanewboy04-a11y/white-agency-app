@@ -978,11 +978,12 @@ bot.command('ref', async (ctx) => {
     }
 
     const refCount = db.prepare('SELECT COUNT(*) as count FROM referrals WHERE referrer_id = ?').get(user.id).count;
+    const botUsername = process.env.BOT_USERNAME || 'WhiteAgency_Official_bot';
 
     await ctx.reply(
       `👥 *Реферальная программа*\n\n` +
       `📋 Ваш код: \`${user.referral_code}\`\n` +
-      `🔗 Ваша ссылка: \`t.me/${ctx.botInfo.username}?start=${user.referral_code}\`\n\n` +
+      `🔗 Ваша ссылка: \`t.me/${botUsername}?start=${user.referral_code}\`\n\n` +
       `💰 Получайте *25%* с первого заказа каждого приглашённого друга!\n\n` +
       `📊 Статистика:\n` +
       `• Приглашено: ${refCount}\n` +
