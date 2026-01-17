@@ -654,12 +654,13 @@ app.post('/api/admin/orders/:orderId/message', adminAuthMiddleware, async (req, 
     }
     
     // Send Telegram message
-    await bot.telegram.sendMessage(order.telegram_id, 
+    const webAppUrl = process.env.WEBAPP_URL || 'https://white-agency-app.vercel.app';
+    await bot.telegram.sendMessage(order.telegram_id,
       `💬 Сообщение по заказу #${orderId}\n\n${message}`,
       {
         reply_markup: {
           inline_keyboard: [[
-            { text: '📱 Открыть в приложении', web_app: { url: process.env.WEBAPP_URL } }
+            { text: '📱 Открыть в приложении', web_app: { url: webAppUrl } }
           ]]
         }
       }
@@ -847,12 +848,13 @@ async function notifyOrderStatus(userId, orderId, status) {
     `).run(userId, `${statusInfo.emoji} ${statusInfo.text}`, `Заказ #${orderId}`);
     
     // Send Telegram message
-    await bot.telegram.sendMessage(user.telegram_id, 
+    const webAppUrl = process.env.WEBAPP_URL || 'https://white-agency-app.vercel.app';
+    await bot.telegram.sendMessage(user.telegram_id,
       `${statusInfo.emoji} ${statusInfo.text}\n\nЗаказ #${orderId}`,
       {
         reply_markup: {
           inline_keyboard: [[
-            { text: '📱 Открыть в приложении', web_app: { url: process.env.WEBAPP_URL } }
+            { text: '📱 Открыть в приложении', web_app: { url: webAppUrl } }
           ]]
         }
       }
@@ -878,13 +880,14 @@ bot.command('start', async (ctx) => {
       }
     }
     
+    const webAppUrl = process.env.WEBAPP_URL || 'https://white-agency-app.vercel.app';
     const keyboard = {
       inline_keyboard: [[
-        { text: '🚀 Открыть личный кабинет', web_app: { url: process.env.WEBAPP_URL } }
+        { text: '🚀 Открыть личный кабинет', web_app: { url: webAppUrl } }
       ]]
     };
-    
-    const welcomeMessage = 
+
+    const welcomeMessage =
       `👋 Добро пожаловать в *White Agency*!\n\n` +
       `Мы делаем креативы под результат для:\n` +
       `• 🎰 Gambling / Betting\n` +
@@ -892,23 +895,24 @@ bot.command('start', async (ctx) => {
       `• 📦 Товарка\n` +
       `• 💼 Вакансии / Лидген\n` +
       `• И другие ниши\n\n` +
-      `${refCode ? '🎁 *У вас промокод на -15% на первый заказ!*\n\n' : ''}` +
+      `${refCode ? '🎁 *Вас пригласил друг!*\nПолучите бонусы при регистрации!\n\n' : ''}` +
       `✨ *Что вы получите:*\n` +
       `• Скидки до 20% по программе лояльности\n` +
       `• 5% кешбэк с каждого заказа\n` +
-      `• 25% с первого заказа друга\n\n` +
-      `Нажмите кнопку ниже, чтобы открыть личный кабинет 👇`;
-    
+      `• 25% с первого заказа приглашенного друга\n\n` +
+      `👇 *Нажмите кнопку ниже, чтобы начать*`;
+
     await ctx.reply(welcomeMessage, {
       parse_mode: 'Markdown',
       reply_markup: keyboard
     });
   } catch (error) {
     console.error('Error in /start command:', error);
+    const webAppUrl = process.env.WEBAPP_URL || 'https://white-agency-app.vercel.app';
     await ctx.reply('Добро пожаловать! Нажмите кнопку ниже:', {
       reply_markup: {
         inline_keyboard: [[
-          { text: '🚀 Открыть', web_app: { url: process.env.WEBAPP_URL } }
+          { text: '🚀 Открыть', web_app: { url: webAppUrl } }
         ]]
       }
     }).catch(e => console.error('Fallback message failed:', e));
@@ -932,6 +936,7 @@ bot.command('help', async (ctx) => {
 
 bot.command('prices', async (ctx) => {
   try {
+    const webAppUrl = process.env.WEBAPP_URL || 'https://white-agency-app.vercel.app';
     await ctx.reply(
       `💰 *Цены на услуги:*\n\n` +
       `📸 Статика — от $10\n` +
@@ -947,7 +952,7 @@ bot.command('prices', async (ctx) => {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [[
-            { text: '🚀 Сделать заказ', web_app: { url: process.env.WEBAPP_URL } }
+            { text: '🚀 Сделать заказ', web_app: { url: webAppUrl } }
           ]]
         }
       }
@@ -960,25 +965,25 @@ bot.command('prices', async (ctx) => {
 bot.command('ref', async (ctx) => {
   try {
     const user = db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(ctx.from.id.toString());
-    
+    const webAppUrl = process.env.WEBAPP_URL || 'https://white-agency-app.vercel.app';
+
     if (!user) {
       return ctx.reply('Сначала откройте личный кабинет 👇', {
         reply_markup: {
           inline_keyboard: [[
-            { text: '🚀 Открыть', web_app: { url: process.env.WEBAPP_URL } }
+            { text: '🚀 Открыть', web_app: { url: webAppUrl } }
           ]]
         }
       });
     }
-    
+
     const refCount = db.prepare('SELECT COUNT(*) as count FROM referrals WHERE referrer_id = ?').get(user.id).count;
-    
+
     await ctx.reply(
       `👥 *Реферальная программа*\n\n` +
       `📋 Ваш код: \`${user.referral_code}\`\n` +
-      `🔗 Ваша ссылка: t.me/${ctx.botInfo.username}?start=${user.referral_code}\n\n` +
-      `💰 Получайте *25%* с первого заказа каждого приглашённого друга!\n` +
-      `🎁 Друг получит *-15%* на первый заказ\n\n` +
+      `🔗 Ваша ссылка: \`t.me/${ctx.botInfo.username}?start=${user.referral_code}\`\n\n` +
+      `💰 Получайте *25%* с первого заказа каждого приглашённого друга!\n\n` +
       `📊 Статистика:\n` +
       `• Приглашено: ${refCount}\n` +
       `• Заработано: $${user.referral_earnings.toFixed(2)}`,
