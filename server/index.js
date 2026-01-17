@@ -99,6 +99,27 @@ db.exec(`
     form_fields TEXT DEFAULT '[]',
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS promo_codes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT UNIQUE NOT NULL,
+    discount_percent INTEGER NOT NULL,
+    max_uses INTEGER DEFAULT NULL,
+    current_uses INTEGER DEFAULT 0,
+    expires_at DATETIME DEFAULT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    is_active INTEGER DEFAULT 1
+  );
+
+  CREATE TABLE IF NOT EXISTS promo_uses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    promo_id INTEGER,
+    user_id INTEGER,
+    order_id TEXT,
+    used_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (promo_id) REFERENCES promo_codes(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
 `);
 
 // ==================== AUTH ====================
@@ -1051,6 +1072,254 @@ app.post('/api/admin/settings', adminAuthMiddleware, (req, res) => {
   } catch (error) {
     console.error('Update settings error:', error);
     res.status(500).json({ error: 'Failed to update settings' });
+  }
+});
+
+// ==================== PROMO CODES ====================
+
+// Get all promo codes (admin only)
+app.get('/api/admin/promos', adminAuthMiddleware, (req, res) => {
+  try {
+    const promos = db.prepare(`
+      SELECT * FROM promo_codes ORDER BY created_at DESC
+    `).all();
+    res.json(promos);
+  } catch (error) {
+    console.error('Get promos error:', error);
+    res.status(500).json({ error: 'Failed to get promo codes' });
+  }
+});
+
+// Create promo code (admin only)
+app.post('/api/admin/promos', adminAuthMiddleware, (req, res) => {
+  try {
+    const { code, discount_percent, max_uses, expires_at } = req.body;
+
+    if (!code || !discount_percent) {
+      return res.status(400).json({ error: 'Code and discount are required' });
+    }
+
+    if (discount_percent < 1 || discount_percent > 100) {
+      return res.status(400).json({ error: 'Discount must be between 1-100%' });
+    }
+
+    const result = db.prepare(`
+      INSERT INTO promo_codes (code, discount_percent, max_uses, expires_at)
+      VALUES (?, ?, ?, ?)
+    `).run(code.toUpperCase(), discount_percent, max_uses || null, expires_at || null);
+
+    res.json({
+      success: true,
+      id: result.lastInsertRowid,
+      code: code.toUpperCase()
+    });
+  } catch (error) {
+    if (error.message.includes('UNIQUE constraint')) {
+      res.status(400).json({ error: 'Promo code already exists' });
+    } else {
+      console.error('Create promo error:', error);
+      res.status(500).json({ error: 'Failed to create promo code' });
+    }
+  }
+});
+
+// Delete promo code (admin only)
+app.delete('/api/admin/promos/:id', adminAuthMiddleware, (req, res) => {
+  try {
+    db.prepare('DELETE FROM promo_codes WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete promo error:', error);
+    res.status(500).json({ error: 'Failed to delete promo code' });
+  }
+});
+
+// Check promo code validity (public)
+app.get('/api/promo/:code', (req, res) => {
+  try {
+    const code = req.params.code.toUpperCase();
+    const promo = db.prepare('SELECT * FROM promo_codes WHERE code = ? AND is_active = 1').get(code);
+
+    if (!promo) {
+      return res.json({ valid: false, error: 'Промокод не найден' });
+    }
+
+    // Check expiration
+    if (promo.expires_at && new Date(promo.expires_at) < new Date()) {
+      return res.json({ valid: false, error: 'Промокод истёк' });
+    }
+
+    // Check usage limit
+    if (promo.max_uses && promo.current_uses >= promo.max_uses) {
+      return res.json({ valid: false, error: 'Промокод исчерпан' });
+    }
+
+    res.json({
+      valid: true,
+      code: promo.code,
+      discount: promo.discount_percent
+    });
+  } catch (error) {
+    console.error('Check promo error:', error);
+    res.status(500).json({ error: 'Failed to check promo code' });
+  }
+});
+
+// Apply promo code (update uses count)
+app.post('/api/promo/apply', (req, res) => {
+  try {
+    const { code, user_id, order_id } = req.body;
+    const codeUpper = code.toUpperCase();
+
+    const promo = db.prepare('SELECT * FROM promo_codes WHERE code = ? AND is_active = 1').get(codeUpper);
+
+    if (!promo) {
+      return res.json({ success: false, error: 'Промокод не найден' });
+    }
+
+    // Update use count
+    db.prepare('UPDATE promo_codes SET current_uses = current_uses + 1 WHERE id = ?').run(promo.id);
+
+    // Record use
+    db.prepare(`
+      INSERT INTO promo_uses (promo_id, user_id, order_id)
+      VALUES (?, ?, ?)
+    `).run(promo.id, user_id, order_id);
+
+    res.json({
+      success: true,
+      discount: promo.discount_percent
+    });
+  } catch (error) {
+    console.error('Apply promo error:', error);
+    res.status(500).json({ error: 'Failed to apply promo code' });
+  }
+});
+
+// Update user cashback (admin only)
+app.post('/api/admin/users/:id/cashback', adminAuthMiddleware, (req, res) => {
+  try {
+    const { amount } = req.body;
+    const userId = req.params.id;
+
+    if (amount === undefined) {
+      return res.status(400).json({ error: 'Amount is required' });
+    }
+
+    db.prepare('UPDATE users SET cashback = cashback + ? WHERE id = ?').run(amount, userId);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Update cashback error:', error);
+    res.status(500).json({ error: 'Failed to update cashback' });
+  }
+});
+
+// ==================== TRONSCAN VERIFICATION ====================
+
+// Verify TronScan transaction
+app.post('/api/verify-tronscan', async (req, res) => {
+  try {
+    const { txHash, expectedAmount, recipientAddress } = req.body;
+
+    if (!txHash) {
+      return res.status(400).json({ error: 'Transaction hash required' });
+    }
+
+    console.log(`Verifying TronScan transaction: ${txHash}`);
+
+    // Query TronScan API
+    const apiUrl = `https://apilist.tronscan.org/api/transaction-info?hash=${txHash}`;
+    const response = await fetch(apiUrl, {
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      console.error('TronScan API error:', response.status);
+      return res.status(400).json({
+        verified: false,
+        error: 'Transaction not found on TronScan'
+      });
+    }
+
+    const txData = await response.json();
+    console.log('TronScan response:', JSON.stringify(txData, null, 2));
+
+    // Check if transaction exists and is confirmed
+    if (!txData || txData.code === 'NOT_FOUND') {
+      return res.json({
+        verified: false,
+        error: 'Транзакция не найдена. Убедитесь что она подтверждена в блокчейне.'
+      });
+    }
+
+    // Check if transaction is confirmed
+    if (!txData.confirmed) {
+      return res.json({
+        verified: false,
+        error: 'Транзакция еще не подтверждена. Подождите несколько минут.'
+      });
+    }
+
+    // For USDT TRC20 transfers, check contract data
+    let transferAmount = 0;
+    let transferTo = '';
+
+    if (txData.contractData && txData.contractData.amount) {
+      // USDT TRC20 amount is in smallest units (6 decimals)
+      transferAmount = txData.contractData.amount / 1000000;
+      transferTo = txData.contractData.to_address || txData.toAddress;
+    } else if (txData.trigger_info && txData.trigger_info.parameter) {
+      // Alternative structure
+      const param = txData.trigger_info.parameter;
+      if (param._value) {
+        transferAmount = parseInt(param._value) / 1000000;
+      }
+      if (param._to) {
+        transferTo = param._to;
+      }
+    }
+
+    console.log(`Transfer amount: ${transferAmount} USDT to ${transferTo}`);
+
+    // Verify amount if provided (with 1% tolerance for fees)
+    if (expectedAmount && transferAmount > 0) {
+      const tolerance = expectedAmount * 0.01; // 1% tolerance
+      if (Math.abs(transferAmount - expectedAmount) > tolerance) {
+        return res.json({
+          verified: false,
+          error: `Неверная сумма. Ожидалось: $${expectedAmount}, найдено: $${transferAmount}`
+        });
+      }
+    }
+
+    // Verify recipient address if provided
+    if (recipientAddress && transferTo) {
+      if (transferTo.toLowerCase() !== recipientAddress.toLowerCase()) {
+        return res.json({
+          verified: false,
+          error: 'Неверный адрес получателя'
+        });
+      }
+    }
+
+    // Transaction verified successfully
+    res.json({
+      verified: true,
+      amount: transferAmount,
+      recipient: transferTo,
+      confirmed: txData.confirmed,
+      timestamp: txData.timestamp
+    });
+
+  } catch (error) {
+    console.error('TronScan verification error:', error);
+    res.status(500).json({
+      verified: false,
+      error: 'Ошибка при проверке транзакции: ' + error.message
+    });
   }
 });
 
