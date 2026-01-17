@@ -345,8 +345,8 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
                     </svg>
                     <p>У вас пока нет заказов</p>
-                    <button onclick="showOrderForm()" class="mt-4 px-6 py-2 btn-primary rounded-full text-sm font-medium">
-                        Создать первый заказ
+                    <button onclick="switchTab('catalog')" class="mt-4 px-6 py-2 btn-primary rounded-full text-sm font-medium">
+                        Перейти в каталог
                     </button>
                 </div>
             </div>
@@ -442,120 +442,12 @@
     <div id="modalOverlay" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 hidden" onclick="closeModal()"></div>
 
     <!-- Order Form Modal -->
+    <!-- OLD SERVICE ORDER MODAL - REMOVED - Use catalog cart instead -->
+    <!--
     <div id="orderModal" class="fixed bottom-0 left-0 right-0 rounded-t-3xl z-50 hidden max-h-[90vh] overflow-y-auto" style="background: var(--tg-theme-bg-color);">
-        <div class="sticky top-0 pt-4 px-6 pb-2 border-b" style="background: var(--tg-theme-bg-color);">
-            <div class="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
-            <h2 class="text-xl font-bold">Новый заказ</h2>
-        </div>
-        <div class="p-6 space-y-4">
-            <div>
-                <label class="text-sm font-medium text-gray-700 mb-2 block">Тип услуги</label>
-                <select id="serviceType" onchange="updatePrice()" class="w-full px-4 py-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-black">
-                    <option value="10">Статика (от $10)</option>
-                    <option value="30">Пак статики 5 шт (от $30)</option>
-                    <option value="25">Видео-креатив (от $25)</option>
-                    <option value="40">Липсинг (от $40)</option>
-                    <option value="30">AI-аватар (от $30)</option>
-                    <option value="100">UGC-видео (от $100)</option>
-                    <option value="15">GIF/Анимация (от $15)</option>
-                    <option value="200">Дизайн лендинга (от $200)</option>
-                </select>
-            </div>
-            <div>
-                <label class="text-sm font-medium text-gray-700 mb-2 block">Ниша</label>
-                <select id="nicheType" class="w-full px-4 py-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-black">
-                    <option>Gambling / Betting</option>
-                    <option>Crypto / Forex</option>
-                    <option>Товарка</option>
-                    <option>Вакансии / Лидген</option>
-                    <option>Другое</option>
-                </select>
-            </div>
-            <div>
-                <label class="text-sm font-medium text-gray-700 mb-2 block">Формат / Платформа</label>
-                <div class="flex flex-wrap gap-2" id="formatButtons">
-                    <button type="button" class="format-btn px-3 py-2 rounded-lg bg-gray-100 text-sm" onclick="toggleFormat(this)">FB/Insta</button>
-                    <button type="button" class="format-btn px-3 py-2 rounded-lg bg-gray-100 text-sm" onclick="toggleFormat(this)">TikTok</button>
-                    <button type="button" class="format-btn px-3 py-2 rounded-lg bg-gray-100 text-sm" onclick="toggleFormat(this)">Telegram</button>
-                    <button type="button" class="format-btn px-3 py-2 rounded-lg bg-gray-100 text-sm" onclick="toggleFormat(this)">9:16</button>
-                    <button type="button" class="format-btn px-3 py-2 rounded-lg bg-gray-100 text-sm" onclick="toggleFormat(this)">1:1</button>
-                    <button type="button" class="format-btn px-3 py-2 rounded-lg bg-gray-100 text-sm" onclick="toggleFormat(this)">4:5</button>
-                </div>
-            </div>
-            <div>
-                <label class="text-sm font-medium text-gray-700 mb-2 block">Описание задачи</label>
-                <textarea id="orderDescription" class="w-full px-4 py-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-black h-24 resize-none" placeholder="Опишите, что нужно сделать..."></textarea>
-            </div>
-            <div>
-                <label class="text-sm font-medium text-gray-700 mb-2 block">Референсы (ссылки)</label>
-                <input type="text" id="orderRefs" class="w-full px-4 py-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-black" placeholder="Ссылка на пример">
-            </div>
-            <div>
-                <label class="text-sm font-medium text-gray-700 mb-2 block">Медиа-файлы (опционально)</label>
-                <input type="file" id="orderMediaFiles" multiple accept="image/*,video/*,.pdf,.zip,.rar"
-                    onchange="handleFileSelect(this)"
-                    class="w-full px-4 py-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-black bg-gray-50 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-black file:text-white hover:file:bg-gray-800">
-                <div class="text-xs text-gray-500 mt-1">Загрузите фото, видео или документы (макс 10MB каждый)</div>
-                <div id="filePreview" class="mt-3 grid grid-cols-3 gap-2"></div>
-            </div>
-
-            <!-- Order Summary -->
-            <div class="card rounded-xl p-4 space-y-3">
-                <div class="flex justify-between items-center">
-                    <span class="text-sm">Стоимость</span>
-                    <span class="font-bold" id="orderPrice">$10.00</span>
-                </div>
-                <div class="flex justify-between items-center text-green-600">
-                    <span class="text-sm">Скидка <span id="discountLevel">Bronze</span> (-<span id="discountPercent">5</span>%)</span>
-                    <span class="font-medium" id="orderDiscount">-$0.50</span>
-                </div>
-                <div id="referralDiscountApplied" class="hidden flex justify-between items-center text-purple-600">
-                    <span class="text-sm">🎁 Реферальная скидка (-25%)</span>
-                    <span class="font-medium" id="referralDiscountAmount">-$0.00</span>
-                </div>
-                <div class="flex justify-between items-center">
-                    <div class="flex items-center gap-2">
-                        <span class="text-sm">Использовать кешбэк</span>
-                        <span class="text-xs text-gray-400">(макс 50%)</span>
-                    </div>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" class="sr-only peer" id="useCashback" onchange="updatePrice()">
-                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
-                    </label>
-                </div>
-                <div id="cashbackApplied" class="hidden flex justify-between items-center text-green-600">
-                    <span class="text-sm">Кешбэк списан</span>
-                    <span class="font-medium" id="cashbackAmount">-$0.00</span>
-                </div>
-                <div class="border-t pt-3">
-                    <div class="mb-2">
-                        <input type="text" id="promoCodeInput" placeholder="Введите промокод"
-                            class="w-full px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black uppercase mb-2"
-                            onkeyup="this.value = this.value.toUpperCase()">
-                        <button onclick="applyPromoCode()" class="w-full py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition">
-                            ✓ Применить
-                        </button>
-                    </div>
-                    <div id="promoApplied" class="hidden flex justify-between items-center text-blue-600 text-sm bg-blue-50 px-3 py-2 rounded-lg">
-                        <span>🎁 Промокод <span id="appliedPromoCode" class="font-semibold"></span></span>
-                        <span class="font-bold" id="promoDiscount">-$0.00</span>
-                    </div>
-                </div>
-                <div class="border-t pt-3 flex justify-between items-center">
-                    <span class="font-semibold">Итого к оплате</span>
-                    <span class="text-xl font-bold" id="orderTotal">$9.50</span>
-                </div>
-                <div class="flex justify-between items-center text-green-600 text-sm">
-                    <span>Кешбэк за заказ (5%)</span>
-                    <span class="font-medium" id="orderCashback">+$0.48</span>
-                </div>
-            </div>
-            
-            <button onclick="proceedToPayment()" id="submitOrderBtn" class="w-full py-4 btn-primary rounded-xl font-semibold transition-opacity">
-                Перейти к оплате →
-            </button>
-        </div>
+        ... REMOVED ...
     </div>
+    -->
 
     <!-- Tips Modal -->
     <div id="tipsModal" class="fixed bottom-0 left-0 right-0 rounded-t-3xl z-50 hidden" style="background: var(--tg-theme-bg-color);">
@@ -691,8 +583,12 @@
                         <span>🎁 Реферальная скидка (25%):</span>
                         <span id="cartReferralDiscountAmount">-$0.00</span>
                     </div>
+                    <div id="cartCashbackPayment" class="flex justify-between text-sm text-green-600 hidden">
+                        <span>💰 Оплата кешбэком:</span>
+                        <span id="cartCashbackPaymentAmount">-$0.00</span>
+                    </div>
                     <div class="flex justify-between items-center border-t pt-2">
-                        <span class="text-lg font-semibold">Итого:</span>
+                        <span class="text-lg font-semibold">К оплате:</span>
                         <span class="text-2xl font-bold" id="cartTotal">$0.00</span>
                     </div>
                 </div>
@@ -707,6 +603,29 @@
                     </div>
                     <p id="promoError" class="text-xs text-red-500 hidden"></p>
                     <p id="promoSuccess" class="text-xs text-green-600 hidden"></p>
+                </div>
+
+                <!-- Cashback Payment Option -->
+                <div id="cartCashbackSection" class="mt-4 space-y-3 hidden">
+                    <div class="card rounded-xl p-4 bg-gradient-to-r from-green-50 to-emerald-50">
+                        <div class="flex items-center justify-between mb-3">
+                            <div>
+                                <p class="text-sm font-medium text-gray-700">💰 Оплатить кешбэком</p>
+                                <p class="text-xs text-gray-500">Доступно: <span id="cartAvailableCashback" class="font-bold text-green-600">$0.00</span></p>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="cartUseCashback" class="sr-only peer" onchange="toggleCashbackPayment()">
+                                <div class="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                            </label>
+                        </div>
+                        <div id="cartCashbackDetails" class="hidden">
+                            <p class="text-xs text-gray-600 mb-2">Будет списано до 50% от суммы заказа</p>
+                            <div class="flex justify-between text-sm">
+                                <span class="text-gray-700">К оплате кешбэком:</span>
+                                <span id="cartCashbackUsed" class="font-bold text-green-600">$0.00</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="mt-4 space-y-3">
@@ -1033,16 +952,8 @@
                 gold: { min: 1000, discount: 15, next: 'platinum' },
                 platinum: { min: 10000, discount: 20, next: null }
             },
-            PRICES: [
-                { name: 'Статика', desc: '1 креатив', price: 10 },
-                { name: 'Пак статики', desc: '5 креативов', price: 30 },
-                { name: 'Видео-креатив', desc: '9:16 / 4:5 / 1:1', price: 25 },
-                { name: 'Липсинг', desc: 'Движение губ под текст', price: 40 },
-                { name: 'AI-аватар', desc: 'Нейро-персонаж', price: 30 },
-                { name: 'UGC-видео', desc: 'До 15 сек', price: 100 },
-                { name: 'GIF/Анимация', desc: 'Motion-дизайн', price: 15 },
-                { name: 'Дизайн лендинга', desc: 'UX/UI', price: 200 }
-            ]
+            // DEPRECATED: Old service prices - Now using products from database (catalog)
+            PRICES: []
         };
 
         // ==================== STATE ====================
@@ -1351,8 +1262,8 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
                         </svg>
                         <p>У вас пока нет заказов</p>
-                        <button onclick="showOrderForm()" class="mt-4 px-6 py-2 btn-primary rounded-full text-sm font-medium">
-                            Создать первый заказ
+                        <button onclick="switchTab('catalog')" class="mt-4 px-6 py-2 btn-primary rounded-full text-sm font-medium">
+                            Перейти в каталог
                         </button>
                     </div>
                 `;
@@ -2382,15 +2293,20 @@
             }));
 
             container.innerHTML = products.map((product, index) => {
+                const imageContent = product.image_url
+                    ? `<img src="${product.image_url}" alt="${product.name}" class="w-full h-full object-cover" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                       <div class="w-full h-full flex items-center justify-center text-3xl hidden">${product.icon}</div>`
+                    : `<div class="text-3xl">${product.icon}</div>`;
+
                 return `
                     <div class="card rounded-2xl p-4 hover:shadow-lg transition-shadow">
                         <div class="flex gap-4">
-                            <div class="w-16 h-16 bg-gradient-to-br from-gray-800 to-black rounded-xl flex items-center justify-center text-3xl flex-shrink-0">
-                                ${product.icon}
+                            <div class="w-16 h-16 bg-gradient-to-br from-gray-800 to-black rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden">
+                                ${imageContent}
                             </div>
                             <div class="flex-1">
                                 <h3 class="font-semibold text-base mb-1">${product.name}</h3>
-                                <p class="text-xs text-gray-500 mb-2">${product.desc}</p>
+                                <p class="text-xs text-gray-500 mb-2">${product.desc || product.description || ''}</p>
                                 <div class="flex items-center justify-between">
                                     <span class="text-2xl font-bold">$${product.price}</span>
                                     <button onclick="addToCart(${product.id})" class="px-4 py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors">
@@ -2538,11 +2454,31 @@
                 promoDiscount = (afterReferral * state.appliedPromo.discount_percent) / 100;
             }
 
-            const totalPrice = subtotal - referralDiscount - promoDiscount;
+            // Calculate cashback payment (up to 50% of order after discounts)
+            const userCashback = state.user?.cashback || 0;
+            const afterDiscounts = subtotal - referralDiscount - promoDiscount;
+            const maxCashbackUse = Math.min(userCashback, afterDiscounts * 0.5); // Max 50%
+
+            let cashbackUsed = 0;
+            if (document.getElementById('cartUseCashback')?.checked && maxCashbackUse > 0) {
+                cashbackUsed = maxCashbackUse;
+            }
+
+            const finalTotal = afterDiscounts - cashbackUsed;
+
+            // Show/hide cashback section
+            const cashbackSection = document.getElementById('cartCashbackSection');
+            if (cashbackSection && userCashback > 0) {
+                cashbackSection.classList.remove('hidden');
+                document.getElementById('cartAvailableCashback').textContent = `$${userCashback.toFixed(2)}`;
+                document.getElementById('cartCashbackUsed').textContent = `$${maxCashbackUse.toFixed(2)}`;
+            } else if (cashbackSection) {
+                cashbackSection.classList.add('hidden');
+            }
 
             document.getElementById('cartItemCount').textContent = totalItems;
             document.getElementById('cartSubtotal').textContent = `$${subtotal.toFixed(2)}`;
-            document.getElementById('cartTotal').textContent = `$${totalPrice.toFixed(2)}`;
+            document.getElementById('cartTotal').textContent = `$${finalTotal.toFixed(2)}`;
 
             // Show/hide promo discount
             if (state.appliedPromo) {
@@ -2559,6 +2495,27 @@
             } else {
                 document.getElementById('cartReferralDiscount').classList.add('hidden');
             }
+
+            // Show/hide cashback payment
+            if (cashbackUsed > 0) {
+                document.getElementById('cartCashbackPayment').classList.remove('hidden');
+                document.getElementById('cartCashbackPaymentAmount').textContent = `-$${cashbackUsed.toFixed(2)}`;
+            } else {
+                document.getElementById('cartCashbackPayment').classList.add('hidden');
+            }
+        }
+
+        function toggleCashbackPayment() {
+            const checkbox = document.getElementById('cartUseCashback');
+            const details = document.getElementById('cartCashbackDetails');
+
+            if (checkbox.checked) {
+                details.classList.remove('hidden');
+            } else {
+                details.classList.add('hidden');
+            }
+
+            renderCart(); // Recalculate totals
         }
 
         async function applyPromoCode() {
@@ -2642,7 +2599,17 @@
             }
 
             const totalDiscountAmount = referralDiscountAmount + promoDiscountAmount;
-            const totalPrice = subtotal - totalDiscountAmount;
+            const afterDiscounts = subtotal - totalDiscountAmount;
+
+            // Calculate cashback payment (up to 50% of order after discounts)
+            const userCashback = state.user?.cashback || 0;
+            const maxCashbackUse = Math.min(userCashback, afterDiscounts * 0.5);
+            let cashbackUsed = 0;
+            if (document.getElementById('cartUseCashback')?.checked && maxCashbackUse > 0) {
+                cashbackUsed = maxCashbackUse;
+            }
+
+            const totalPrice = afterDiscounts - cashbackUsed;
 
             const orderData = {
                 id: 'ORD' + Date.now(),
@@ -2652,6 +2619,7 @@
                 promo_code: promoCode,
                 discount_amount: totalDiscountAmount,
                 referral_discount: isReferred ? referralDiscountAmount : 0,
+                cashback_used: cashbackUsed,
                 subtotal: subtotal,
                 total: totalPrice,
                 status: 'awaiting_manager',
@@ -2671,6 +2639,14 @@
                 updateCartBadge();
                 document.getElementById('cartPromoCode').value = '';
                 document.getElementById('cartPromoCode').disabled = false;
+
+                // Reset cashback checkbox
+                const cashbackCheckbox = document.getElementById('cartUseCashback');
+                if (cashbackCheckbox) {
+                    cashbackCheckbox.checked = false;
+                    const details = document.getElementById('cartCashbackDetails');
+                    if (details) details.classList.add('hidden');
+                }
 
                 closeModal();
                 showToast('✅ Заказ отправлен менеджеру!');

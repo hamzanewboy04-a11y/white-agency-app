@@ -228,6 +228,26 @@ try {
   }
 }
 
+// Add image_url column to products if it doesn't exist
+try {
+  db.prepare('ALTER TABLE products ADD COLUMN image_url TEXT').run();
+  console.log('Migration: Added image_url column to products table');
+} catch (error) {
+  if (!error.message.includes('duplicate column name')) {
+    console.error('Migration error:', error.message);
+  }
+}
+
+// Add file_url column to orders if it doesn't exist
+try {
+  db.prepare('ALTER TABLE orders ADD COLUMN file_url TEXT').run();
+  console.log('Migration: Added file_url column to orders table');
+} catch (error) {
+  if (!error.message.includes('duplicate column name')) {
+    console.error('Migration error:', error.message);
+  }
+}
+
 // Seed initial products if table is empty
 const productCount = db.prepare('SELECT COUNT(*) as count FROM products').get();
 if (productCount.count === 0) {
@@ -506,33 +526,21 @@ app.post('/api/orders', authMiddleware, (req, res) => {
       order.basePrice
     );
     
-    // Update user cashback and total spent
-    db.prepare(`
-      UPDATE users SET 
-        cashback = cashback - ? + ?,
-        total_spent = total_spent + ?
-      WHERE id = ?
-    `).run(order.cashbackUsed || 0, order.cashbackEarned, order.total, user.id);
-    
-    // Add cashback history
+    // Deduct used cashback (if any)
     if (order.cashbackUsed > 0) {
+      db.prepare(`
+        UPDATE users SET cashback = cashback - ? WHERE id = ?
+      `).run(order.cashbackUsed, user.id);
+
       db.prepare(`
         INSERT INTO cashback_history (user_id, amount, description)
         VALUES (?, ?, ?)
       `).run(user.id, -order.cashbackUsed, `Оплата заказа #${orderId}`);
     }
-    
-    db.prepare(`
-      INSERT INTO cashback_history (user_id, amount, description)
-      VALUES (?, ?, ?)
-    `).run(user.id, order.cashbackEarned, `Кешбэк за заказ #${orderId}`);
-    
-    // Check and update level
-    updateUserLevel(user.id);
-    
-    // Process referral payment for first order
-    processReferralPayment(user.id);
-    
+
+    // NOTE: Cashback rewards, total_spent, level updates and referral bonuses
+    // will be processed AFTER payment confirmation
+
     // Add notification
     db.prepare(`
       INSERT INTO notifications (user_id, title, message)
@@ -569,11 +577,24 @@ app.post('/api/cart-orders', authMiddleware, (req, res) => {
 
     const orderData = req.body;
     const orderId = orderData.id || ('ORD' + Date.now());
+    const cashbackUsed = orderData.cashback_used || 0;
+
+    // Validate cashback usage
+    if (cashbackUsed > 0) {
+      if (cashbackUsed > user.cashback) {
+        return res.status(400).json({ error: 'Insufficient cashback balance' });
+      }
+      const afterDiscounts = orderData.subtotal - (orderData.discount_amount || 0);
+      const maxAllowed = afterDiscounts * 0.5;
+      if (cashbackUsed > maxAllowed) {
+        return res.status(400).json({ error: 'Cashback usage exceeds 50% limit' });
+      }
+    }
 
     // Insert cart order with items
     db.prepare(`
-      INSERT INTO orders (id, user_id, items, comment, promo_code, discount_amount, subtotal, total, status, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO orders (id, user_id, items, comment, promo_code, discount_amount, cashback_used, subtotal, total, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       orderId,
       user.id,
@@ -581,32 +602,29 @@ app.post('/api/cart-orders', authMiddleware, (req, res) => {
       orderData.comment || '',
       orderData.promo_code || null,
       orderData.discount_amount || 0,
+      cashbackUsed,
       orderData.subtotal || orderData.total,
       orderData.total,
       'awaiting_manager',
       new Date().toISOString()
     );
 
-    // Calculate and add cashback (5%)
-    const cashbackAmount = orderData.total * 0.05;
-    db.prepare(`
-      UPDATE users SET
-        cashback = cashback + ?,
-        total_spent = total_spent + ?
-      WHERE id = ?
-    `).run(cashbackAmount, orderData.total, user.id);
+    // Deduct cashback from user balance if used
+    if (cashbackUsed > 0) {
+      db.prepare(`
+        UPDATE users SET cashback = cashback - ?
+        WHERE id = ?
+      `).run(cashbackUsed, user.id);
 
-    // Add cashback history
-    db.prepare(`
-      INSERT INTO cashback_history (user_id, amount, description)
-      VALUES (?, ?, ?)
-    `).run(user.id, cashbackAmount, `Кешбэк за заказ #${orderId}`);
+      // Add to cashback history
+      db.prepare(`
+        INSERT INTO cashback_history (user_id, amount, description)
+        VALUES (?, ?, ?)
+      `).run(user.id, -cashbackUsed, `Оплата кешбэком за заказ #${orderId}`);
+    }
 
-    // Check and update user level
-    updateUserLevel(user.id);
-
-    // Process referral payment for first order
-    processReferralPayment(user.id);
+    // NOTE: Cashback earnings and referral bonuses will be added AFTER payment confirmation
+    // in the payment verification endpoint
 
     // Add notification to user
     db.prepare(`
@@ -624,6 +642,11 @@ app.post('/api/cart-orders', authMiddleware, (req, res) => {
       ? `🎫 Промокод: ${orderData.promo_code} (-$${orderData.discount_amount})\n`
       : '';
 
+    // Build cashback info for notification
+    const cashbackInfo = cashbackUsed > 0
+      ? `💰 Оплачено кешбэком: $${cashbackUsed.toFixed(2)}\n`
+      : '';
+
     // Notify admin about new cart order
     notifyAdmin(
       `🛒 Новый заказ из корзины #${orderId}\n\n` +
@@ -631,7 +654,8 @@ app.post('/api/cart-orders', authMiddleware, (req, res) => {
       `Telegram ID: ${user.telegram_id}\n\n` +
       `📦 Товары:\n${itemsList}\n\n` +
       `${promoInfo}` +
-      `💰 Итого: $${orderData.total}\n` +
+      `${cashbackInfo}` +
+      `💰 К оплате: $${orderData.total}\n` +
       `${orderData.comment ? `💬 Комментарий: ${orderData.comment}\n` : ''}\n` +
       `⚡ Требуется создать инвойс в админ-панели`
     );
@@ -817,18 +841,23 @@ app.get('/api/admin/referrals', adminAuthMiddleware, (req, res) => {
 app.post('/api/admin/orders/:orderId/status', adminAuthMiddleware, (req, res) => {
   try {
     const { orderId } = req.params;
-    const { status } = req.body;
-    
+    const { status, file_url } = req.body;
+
     const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
     if (!order) {
       return res.status(404).json({ error: 'Order not found' });
     }
-    
-    db.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, orderId);
-    
+
+    // Update status and file_url if provided
+    if (file_url) {
+      db.prepare('UPDATE orders SET status = ?, file_url = ? WHERE id = ?').run(status, file_url, orderId);
+    } else {
+      db.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, orderId);
+    }
+
     // Notify user
-    notifyOrderStatus(order.user_id, orderId, status);
-    
+    notifyOrderStatus(order.user_id, orderId, status, file_url);
+
     res.json({ success: true });
   } catch (error) {
     console.error('Error updating order status:', error);
@@ -1063,38 +1092,52 @@ function processReferralPayment(userId) {
 }
 
 // Notify user about order status
-async function notifyOrderStatus(userId, orderId, status) {
+async function notifyOrderStatus(userId, orderId, status, fileUrl = null) {
   try {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
     if (!user) return;
-    
+
     const statuses = {
       pending: { emoji: '⏳', text: 'Заказ ожидает обработки' },
       working: { emoji: '🎨', text: 'Ваш заказ в работе!' },
       completed: { emoji: '✅', text: 'Ваш заказ готов!' },
       cancelled: { emoji: '❌', text: 'Заказ отменён' }
     };
-    
+
     const statusInfo = statuses[status] || { emoji: '📦', text: 'Статус заказа обновлён' };
-    
+
+    // Build notification message
+    let notificationMsg = `Заказ #${orderId}`;
+    if (fileUrl && status === 'completed') {
+      notificationMsg += `\n\n📎 Файлы готовы: ${fileUrl}`;
+    }
+
     // Add notification to DB
     db.prepare(`
       INSERT INTO notifications (user_id, title, message)
       VALUES (?, ?, ?)
-    `).run(userId, `${statusInfo.emoji} ${statusInfo.text}`, `Заказ #${orderId}`);
-    
+    `).run(userId, `${statusInfo.emoji} ${statusInfo.text}`, notificationMsg);
+
     // Send Telegram message
     const webAppUrl = process.env.WEBAPP_URL || 'https://white-agency-app.vercel.app';
-    await bot.telegram.sendMessage(user.telegram_id,
-      `${statusInfo.emoji} ${statusInfo.text}\n\nЗаказ #${orderId}`,
-      {
-        reply_markup: {
-          inline_keyboard: [[
-            { text: '📱 Открыть в приложении', web_app: { url: webAppUrl } }
-          ]]
-        }
+    let telegramMsg = `${statusInfo.emoji} ${statusInfo.text}\n\nЗаказ #${orderId}`;
+
+    if (fileUrl && status === 'completed') {
+      telegramMsg += `\n\n📎 Скачать файлы:\n${fileUrl}`;
+    }
+
+    const buttons = [[{ text: '📱 Открыть в приложении', web_app: { url: webAppUrl } }]];
+
+    // Add download button if file URL is provided
+    if (fileUrl && status === 'completed') {
+      buttons.push([{ text: '📥 Скачать файлы', url: fileUrl }]);
+    }
+
+    await bot.telegram.sendMessage(user.telegram_id, telegramMsg, {
+      reply_markup: {
+        inline_keyboard: buttons
       }
-    );
+    });
   } catch (error) {
     console.error('Failed to notify order status:', error.message);
   }
@@ -1593,6 +1636,30 @@ app.post('/api/invoices/:id/confirm', authMiddleware, (req, res) => {
     // Update order status to working
     db.prepare('UPDATE orders SET status = ?, tx_hash = ? WHERE id = ?').run('working', invoice.tx_hash, invoice.order_id);
 
+    // NOW PROCESS PAYMENT REWARDS (cashback, referrals, level)
+    // Calculate and add cashback (5%)
+    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(invoice.order_id);
+    const cashbackAmount = invoice.amount * 0.05;
+
+    db.prepare(`
+      UPDATE users SET
+        cashback = cashback + ?,
+        total_spent = total_spent + ?
+      WHERE id = ?
+    `).run(cashbackAmount, invoice.amount, invoice.user_id);
+
+    // Add cashback history
+    db.prepare(`
+      INSERT INTO cashback_history (user_id, amount, description)
+      VALUES (?, ?, ?)
+    `).run(invoice.user_id, cashbackAmount, `Кешбэк за заказ #${invoice.order_id}`);
+
+    // Check and update user level
+    updateUserLevel(invoice.user_id);
+
+    // Process referral payment for first order
+    processReferralPayment(invoice.user_id);
+
     // Send notification to user
     db.prepare(`
       INSERT INTO notifications (user_id, title, message)
@@ -1934,10 +2001,29 @@ app.post('/api/admin/withdrawals/:id/cancel', adminAuthMiddleware, (req, res) =>
 
     // Notify user
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(withdrawal.user_id);
+    const notificationMessage = `Выплата $${withdrawal.amount} отменена. ${reason || 'Обратитесь к менеджеру'}`;
+
     db.prepare(`
       INSERT INTO notifications (user_id, title, message)
       VALUES (?, ?, ?)
-    `).run(user.id, '❌ Выплата отменена', `Выплата $${withdrawal.amount} отменена. ${reason || 'Обратитесь к менеджеру'}`);
+    `).run(user.id, '❌ Выплата отменена', notificationMessage);
+
+    // Send Telegram notification
+    bot.telegram.sendMessage(
+      user.telegram_id,
+      `❌ *Выплата отменена*\n\n` +
+      `Сумма: $${withdrawal.amount.toFixed(2)}\n` +
+      `Причина: ${reason || 'Не указана'}\n\n` +
+      `Если у вас есть вопросы, обратитесь к менеджеру.`,
+      {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '💬 Написать менеджеру', url: `https://t.me/${process.env.SUPPORT_USERNAME || 'support'}` }
+          ]]
+        }
+      }
+    ).catch(err => console.error('Failed to send withdrawal cancellation notification:', err.message));
 
     res.json({ success: true });
   } catch (error) {

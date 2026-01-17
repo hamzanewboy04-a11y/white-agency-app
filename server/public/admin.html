@@ -409,6 +409,86 @@
     </div>
   </div>
 
+  <!-- Withdrawal Process Modal -->
+  <div id="withdrawalProcessModal" class="fixed inset-0 bg-black/90 z-50 hidden items-center justify-center p-4">
+    <div class="glass rounded-2xl w-full max-w-md border border-gray-800">
+      <div class="sticky top-0 glass p-4 border-b border-gray-800 flex items-center justify-between">
+        <h3 class="font-medium">💸 Обработка выплаты</h3>
+        <button onclick="closeWithdrawalProcessModal()" class="text-gray-500 hover:text-white">✕</button>
+      </div>
+      <div class="p-6 space-y-4">
+        <div class="space-y-2">
+          <p class="text-sm text-gray-400">Пользователь</p>
+          <p class="text-lg font-medium" id="withdrawalProcessUserName"></p>
+        </div>
+
+        <div class="space-y-2">
+          <p class="text-sm text-gray-400">Сумма выплаты</p>
+          <p class="text-2xl font-bold text-green-400" id="withdrawalProcessAmount"></p>
+        </div>
+
+        <div class="space-y-2">
+          <p class="text-sm text-gray-400">Кошелек для выплаты</p>
+          <div class="flex items-center gap-2">
+            <input type="text" id="withdrawalProcessWallet" readonly class="flex-1 bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-2 text-sm font-mono" />
+            <button onclick="copyWithdrawalWallet()" class="btn-primary px-4 py-2 rounded-lg text-sm">
+              📋 Копировать
+            </button>
+          </div>
+        </div>
+
+        <div class="space-y-2">
+          <label class="text-sm text-gray-400">TxHash транзакции (опционально)</label>
+          <input type="text" id="withdrawalProcessTxHash" placeholder="Введите хеш транзакции..." class="w-full bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-2 text-sm font-mono focus:border-blue-500 focus:outline-none" />
+        </div>
+
+        <div class="flex gap-3 pt-4">
+          <button onclick="confirmWithdrawalProcess()" class="flex-1 btn-primary py-3 rounded-lg font-medium">
+            ✅ Подтвердить выплату
+          </button>
+          <button onclick="closeWithdrawalProcessModal()" class="flex-1 bg-gray-700 hover:bg-gray-600 py-3 rounded-lg font-medium">
+            Отмена
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Withdrawal Cancel Modal -->
+  <div id="withdrawalCancelModal" class="fixed inset-0 bg-black/90 z-50 hidden items-center justify-center p-4">
+    <div class="glass rounded-2xl w-full max-w-md border border-gray-800">
+      <div class="sticky top-0 glass p-4 border-b border-gray-800 flex items-center justify-between">
+        <h3 class="font-medium">❌ Отмена выплаты</h3>
+        <button onclick="closeWithdrawalCancelModal()" class="text-gray-500 hover:text-white">✕</button>
+      </div>
+      <div class="p-6 space-y-4">
+        <div class="space-y-2">
+          <p class="text-sm text-gray-400">Пользователь</p>
+          <p class="text-lg font-medium" id="withdrawalCancelUserName"></p>
+        </div>
+
+        <div class="space-y-2">
+          <p class="text-sm text-gray-400">Сумма</p>
+          <p class="text-2xl font-bold text-red-400" id="withdrawalCancelAmount"></p>
+        </div>
+
+        <div class="space-y-2">
+          <label class="text-sm text-gray-400">Причина отмены *</label>
+          <textarea id="withdrawalCancelReason" placeholder="Укажите причину отмены выплаты..." class="w-full bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:border-red-500 focus:outline-none min-h-[100px]"></textarea>
+        </div>
+
+        <div class="flex gap-3 pt-4">
+          <button onclick="confirmWithdrawalCancel()" class="flex-1 bg-red-600 hover:bg-red-700 py-3 rounded-lg font-medium">
+            ❌ Отменить выплату
+          </button>
+          <button onclick="closeWithdrawalCancelModal()" class="flex-1 bg-gray-700 hover:bg-gray-600 py-3 rounded-lg font-medium">
+            Назад
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Container -->
   <div id="toastContainer" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
 
@@ -724,11 +804,12 @@
       container.innerHTML = productsData.map(product => `
         <div class="bg-gray-900/50 rounded-lg p-4">
           <div class="flex gap-4 mb-4">
-            <div class="w-16 h-16 bg-gradient-to-br from-gray-800 to-black rounded-xl flex items-center justify-center text-3xl flex-shrink-0">
-              <input type="text" value="${product.icon}" maxlength="2"
-                onchange="updateProductField(${product.id}, 'icon', this.value)"
-                class="bg-transparent text-center w-full outline-none"
-                title="Эмодзи иконка">
+            <div class="w-16 h-16 bg-gradient-to-br from-gray-800 to-black rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden">
+              ${product.image_url ?
+                `<img src="${product.image_url}" alt="${product.name}" class="w-full h-full object-cover" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                 <div class="w-full h-full flex items-center justify-center text-3xl hidden">${product.icon}</div>` :
+                `<div class="text-3xl">${product.icon}</div>`
+              }
             </div>
             <div class="flex-1">
               <input type="text" value="${product.name}"
@@ -739,6 +820,19 @@
                 onchange="updateProductField(${product.id}, 'description', this.value)"
                 class="bg-transparent border-b border-gray-700 focus:border-white outline-none text-xs text-gray-400 w-full"
                 placeholder="Описание">
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="block text-xs text-gray-500 mb-1">URL изображения</label>
+            <div class="flex gap-2">
+              <input type="url" value="${product.image_url || ''}"
+                onchange="updateProductField(${product.id}, 'image_url', this.value)"
+                class="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-xs focus:outline-none focus:border-white"
+                placeholder="https://example.com/image.jpg">
+              <input type="text" value="${product.icon}" maxlength="2"
+                onchange="updateProductField(${product.id}, 'icon', this.value)"
+                class="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-center w-16 text-xl outline-none"
+                title="Эмодзи (резерв)">
             </div>
           </div>
           <div class="flex items-center gap-3">
@@ -1008,43 +1102,96 @@
       }).join('');
     }
 
-    async function processWithdrawal(id) {
+    // Withdrawal modal state
+    let currentWithdrawalId = null;
+
+    function processWithdrawal(id) {
       const withdrawal = withdrawalsData.find(w => w.id === id);
       if (!withdrawal) return;
 
-      const txHash = prompt(
-        `Выплата пользователю ${withdrawal.user_name}\n` +
-        `Сумма: $${withdrawal.amount}\n` +
-        `Кошелек: ${withdrawal.wallet_address}\n\n` +
-        `Введите TxHash транзакции (или оставьте пустым):`
-      );
+      currentWithdrawalId = id;
 
-      if (txHash === null) return; // Cancel
+      // Populate modal
+      document.getElementById('withdrawalProcessUserName').textContent = withdrawal.user_name;
+      document.getElementById('withdrawalProcessAmount').textContent = `$${withdrawal.amount.toFixed(2)}`;
+      document.getElementById('withdrawalProcessWallet').value = withdrawal.wallet_address;
+      document.getElementById('withdrawalProcessTxHash').value = '';
+
+      // Show modal
+      document.getElementById('withdrawalProcessModal').classList.remove('hidden');
+      document.getElementById('withdrawalProcessModal').classList.add('flex');
+    }
+
+    function closeWithdrawalProcessModal() {
+      document.getElementById('withdrawalProcessModal').classList.add('hidden');
+      document.getElementById('withdrawalProcessModal').classList.remove('flex');
+      currentWithdrawalId = null;
+    }
+
+    function copyWithdrawalWallet() {
+      const walletInput = document.getElementById('withdrawalProcessWallet');
+      walletInput.select();
+      document.execCommand('copy');
+
+      // Try modern API if available
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(walletInput.value);
+      }
+
+      showToast('📋 Кошелек скопирован!', 'success');
+    }
+
+    async function confirmWithdrawalProcess() {
+      if (!currentWithdrawalId) return;
+
+      const txHash = document.getElementById('withdrawalProcessTxHash').value.trim();
 
       try {
-        await apiCall(`/api/admin/withdrawals/${id}/process`, 'POST', { tx_hash: txHash || null });
-        showToast('Выплата выполнена!', 'success');
+        await apiCall(`/api/admin/withdrawals/${currentWithdrawalId}/process`, 'POST', { tx_hash: txHash || null });
+        showToast('✅ Выплата выполнена!', 'success');
+        closeWithdrawalProcessModal();
         await Promise.all([loadWithdrawals(), loadUsers()]);
       } catch (error) {
         showToast('Ошибка: ' + error.message, 'error');
       }
     }
 
-    async function cancelWithdrawal(id) {
+    function cancelWithdrawal(id) {
       const withdrawal = withdrawalsData.find(w => w.id === id);
       if (!withdrawal) return;
 
-      const reason = prompt(
-        `Отмена выплаты пользователю ${withdrawal.user_name}\n` +
-        `Сумма: $${withdrawal.amount}\n\n` +
-        `Введите причину отмены:`
-      );
+      currentWithdrawalId = id;
 
-      if (!reason) return;
+      // Populate modal
+      document.getElementById('withdrawalCancelUserName').textContent = withdrawal.user_name;
+      document.getElementById('withdrawalCancelAmount').textContent = `$${withdrawal.amount.toFixed(2)}`;
+      document.getElementById('withdrawalCancelReason').value = '';
+
+      // Show modal
+      document.getElementById('withdrawalCancelModal').classList.remove('hidden');
+      document.getElementById('withdrawalCancelModal').classList.add('flex');
+    }
+
+    function closeWithdrawalCancelModal() {
+      document.getElementById('withdrawalCancelModal').classList.add('hidden');
+      document.getElementById('withdrawalCancelModal').classList.remove('flex');
+      currentWithdrawalId = null;
+    }
+
+    async function confirmWithdrawalCancel() {
+      if (!currentWithdrawalId) return;
+
+      const reason = document.getElementById('withdrawalCancelReason').value.trim();
+
+      if (!reason) {
+        showToast('Укажите причину отмены', 'error');
+        return;
+      }
 
       try {
-        await apiCall(`/api/admin/withdrawals/${id}/cancel`, 'POST', { reason });
-        showToast('Выплата отменена', 'success');
+        await apiCall(`/api/admin/withdrawals/${currentWithdrawalId}/cancel`, 'POST', { reason });
+        showToast('❌ Выплата отменена', 'success');
+        closeWithdrawalCancelModal();
         await loadWithdrawals();
       } catch (error) {
         showToast('Ошибка: ' + error.message, 'error');
@@ -1162,45 +1309,100 @@
         return;
       }
       
-      document.getElementById('usersList').innerHTML = filtered.map(user => `
-        <div class="glass rounded-xl p-4 fade-in border border-gray-800/50">
-          <div class="flex flex-wrap items-center justify-between gap-4">
+      document.getElementById('usersList').innerHTML = filtered.map(user => {
+        const joinDate = user.created_at ? new Date(user.created_at).toLocaleDateString('ru-RU') : 'Неизвестно';
+        const orderCount = ordersData.filter(o => o.user_id === user.id).length;
+        const referrer = usersData.find(u => u.id === user.referred_by);
+        const referrerName = referrer ? `${referrer.name} (@${referrer.username})` : 'Прямой заход';
+
+        return `
+        <div class="glass rounded-xl p-5 fade-in border border-gray-800/50">
+          <!-- Header Row -->
+          <div class="flex items-center justify-between mb-4">
             <div class="flex items-center gap-4">
-              <div class="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center text-sm font-medium">
+              <div class="w-12 h-12 bg-gradient-to-br from-gray-700 to-gray-900 rounded-full flex items-center justify-center text-lg font-bold">
                 ${(user.name || 'U').charAt(0).toUpperCase()}
               </div>
               <div>
-                <div class="font-medium">${user.name || 'Без имени'}</div>
-                <div class="text-sm text-gray-500">@${user.username || 'нет username'}</div>
-                <div class="text-xs text-gray-600">ID: ${user.telegram_id}</div>
+                <div class="font-semibold text-lg">${user.name || 'Без имени'}</div>
+                <div class="text-sm text-gray-400">@${user.username || 'нет username'}</div>
               </div>
             </div>
-            <div class="flex items-center gap-6 text-sm">
-              <div class="text-center">
-                <div class="text-sm font-medium ${getLevelColor(user.level)}">${(user.level || 'none').toUpperCase()}</div>
-                <div class="text-xs text-gray-600">Уровень</div>
+            <div class="text-right">
+              <div class="text-xs text-gray-500">Telegram ID</div>
+              <div class="text-sm font-mono text-gray-300">${user.telegram_id}</div>
+            </div>
+          </div>
+
+          <!-- Stats Grid -->
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <div class="bg-gray-900/50 rounded-lg p-3 text-center">
+              <div class="text-sm font-medium ${getLevelColor(user.level)}">${(user.level || 'none').toUpperCase()}</div>
+              <div class="text-xs text-gray-500 mt-1">Уровень</div>
+            </div>
+            <div class="bg-gray-900/50 rounded-lg p-3 text-center">
+              <div class="text-sm font-bold text-green-400">$${(user.total_spent || 0).toFixed(2)}</div>
+              <div class="text-xs text-gray-500 mt-1">Потрачено</div>
+            </div>
+            <div class="bg-gray-900/50 rounded-lg p-3 text-center">
+              <div class="text-sm font-bold text-blue-400">$${(user.cashback || 0).toFixed(2)}</div>
+              <div class="text-xs text-gray-500 mt-1">Кешбэк</div>
+            </div>
+            <div class="bg-gray-900/50 rounded-lg p-3 text-center">
+              <div class="text-sm font-bold text-purple-400">$${(user.referral_income || 0).toFixed(2)}</div>
+              <div class="text-xs text-gray-500 mt-1">Реф. доход</div>
+            </div>
+          </div>
+
+          <!-- Details Grid -->
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 text-sm">
+            <div class="bg-gray-900/30 rounded-lg p-3">
+              <div class="text-xs text-gray-500 mb-1">📅 Регистрация</div>
+              <div class="text-gray-300">${joinDate}</div>
+            </div>
+            <div class="bg-gray-900/30 rounded-lg p-3">
+              <div class="text-xs text-gray-500 mb-1">🛍 Заказов</div>
+              <div class="text-gray-300">${orderCount}</div>
+            </div>
+            <div class="bg-gray-900/30 rounded-lg p-3">
+              <div class="text-xs text-gray-500 mb-1">👤 Пригласил</div>
+              <div class="text-gray-300 text-xs">${referrerName}</div>
+            </div>
+          </div>
+
+          ${user.trc20_wallet ? `
+          <div class="bg-gray-900/30 rounded-lg p-3 mb-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-xs text-gray-500 mb-1">💳 TRC20 кошелёк</div>
+                <div class="text-xs font-mono text-gray-300">${user.trc20_wallet}</div>
               </div>
-              <div class="text-center">
-                <div class="text-sm font-medium text-white">$${user.total_spent || 0}</div>
-                <div class="text-xs text-gray-600">Потрачено</div>
-              </div>
-              <div class="text-center">
-                <div class="text-sm font-medium text-gray-400">$${(user.cashback || 0).toFixed(2)}</div>
-                <div class="text-xs text-gray-600">Кешбэк</div>
-              </div>
-              <button onclick="sendMessageToUser(${user.id}, '${user.name || 'Пользователь'}')" class="bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg text-sm transition" title="Отправить сообщение">
-                ✉
-              </button>
-              <button onclick="addCashback(${user.id}, '${user.name || 'Пользователь'}')" class="bg-green-800 hover:bg-green-700 px-3 py-2 rounded-lg text-sm transition" title="Добавить кешбек">
-                💰
-              </button>
-              <button onclick="showUserActivity(${user.id}, '${user.name || 'Пользователь'}')" class="bg-blue-800 hover:bg-blue-700 px-3 py-2 rounded-lg text-sm transition" title="История активности">
-                📊
+              <button onclick="navigator.clipboard.writeText('${user.trc20_wallet}'); showToast('Кошелёк скопирован', 'success')"
+                class="bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded text-xs transition">
+                📋 Копировать
               </button>
             </div>
           </div>
+          ` : ''}
+
+          <!-- Actions -->
+          <div class="flex flex-wrap gap-2">
+            <button onclick="sendMessageToUser(${user.id}, '${user.name || 'Пользователь'}')"
+              class="flex-1 bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg text-sm transition">
+              ✉ Сообщение
+            </button>
+            <button onclick="addCashback(${user.id}, '${user.name || 'Пользователь'}')"
+              class="flex-1 bg-green-800 hover:bg-green-700 px-3 py-2 rounded-lg text-sm transition">
+              💰 Кешбэк
+            </button>
+            <button onclick="showUserActivity(${user.id}, '${user.name || 'Пользователь'}')"
+              class="flex-1 bg-blue-800 hover:bg-blue-700 px-3 py-2 rounded-lg text-sm transition">
+              📊 История
+            </button>
+          </div>
         </div>
-      `).join('');
+        `;
+      }).join('');
     }
 
     function renderReferrals() {
@@ -1496,7 +1698,22 @@
     // Actions
     async function updateOrderStatus(orderId, status) {
       try {
-        await apiCall(`/api/admin/orders/${orderId}/status`, 'POST', { status });
+        let fileUrl = null;
+
+        // If marking as completed, ask for file attachment (optional)
+        if (status === 'completed') {
+          fileUrl = prompt(
+            'Прикрепить файл к заказу? (опционально)\n\n' +
+            'Введите ссылку на файл (Google Drive, Dropbox и т.д.)\n' +
+            'Или оставьте пустым, если файл не нужен:'
+          );
+        }
+
+        await apiCall(`/api/admin/orders/${orderId}/status`, 'POST', {
+          status,
+          file_url: fileUrl || undefined
+        });
+
         showToast(`Статус изменён на "${getStatusText(status)}"`, 'success');
         await loadOrders();
         openOrderModal(orderId);
@@ -1528,28 +1745,14 @@
         return;
       }
 
-      // Check if order already has items (cart order) with potential promo code
-      let promoCode = null;
-      let discountAmount = 0;
-
-      // For cart orders, check if there was a promo code applied
-      // This would be stored in the order comment or we can ask admin
-      const hasPromo = confirm('Был применен промокод?');
-      if (hasPromo) {
-        promoCode = prompt('Введите код промокода:');
-        if (promoCode) {
-          const discount = prompt('Введите размер скидки ($):');
-          discountAmount = parseFloat(discount) || 0;
-        }
-      }
+      // Use final amount from order (already includes all discounts)
+      const finalAmount = order.total;
 
       try {
         const invoice = await apiCall('/api/admin/invoices', 'POST', {
           order_id: orderId,
           user_id: userId,
-          amount: amount,
-          promo_code: promoCode,
-          discount_amount: discountAmount
+          amount: finalAmount
         });
 
         showToast('Инвойс создан и отправлен клиенту!', 'success');
