@@ -256,6 +256,7 @@ app.get('/api/user', authMiddleware, (req, res) => {
       totalSpent: user.total_spent,
       cashback: user.cashback,
       referralCode: user.referral_code,
+      referredBy: user.referred_by,
       referralEarnings: user.referral_earnings,
       trc20Wallet: user.trc20_wallet,
       orders: orders.map(o => ({
@@ -869,7 +870,7 @@ async function notifyOrderStatus(userId, orderId, status) {
 bot.command('start', async (ctx) => {
   try {
     const refCode = ctx.message.text.split(' ')[1];
-    
+
     // Save pending referral
     if (refCode) {
       const existingUser = db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(ctx.from.id.toString());
@@ -877,9 +878,26 @@ bot.command('start', async (ctx) => {
         // Save for later when user opens the app
         db.prepare('INSERT OR REPLACE INTO pending_referrals (telegram_id, referral_code) VALUES (?, ?)')
           .run(ctx.from.id.toString(), refCode);
+
+        // Notify the referrer that someone used their link
+        const referrer = db.prepare('SELECT * FROM users WHERE referral_code = ?').get(refCode);
+        if (referrer) {
+          const userName = ctx.from.first_name || 'Новый пользователь';
+
+          // Add notification
+          db.prepare(`
+            INSERT INTO notifications (user_id, title, message)
+            VALUES (?, ?, ?)
+          `).run(referrer.id, '🎉 Новый реферал!', `${userName} перешёл по вашей ссылке! Когда он сделает заказ, вы получите выплату.`);
+
+          // Send Telegram notification
+          bot.telegram.sendMessage(referrer.telegram_id,
+            `🎉 По вашей реферальной ссылке перешёл ${userName}!\n\nКогда он сделает первый заказ, вы получите 25% от его суммы.`
+          ).catch(err => console.error('Failed to send referral notification:', err.message));
+        }
       }
     }
-    
+
     const webAppUrl = process.env.WEBAPP_URL || 'https://white-agency-app.vercel.app';
     const keyboard = {
       inline_keyboard: [[
@@ -895,7 +913,7 @@ bot.command('start', async (ctx) => {
       `• 📦 Товарка\n` +
       `• 💼 Вакансии / Лидген\n` +
       `• И другие ниши\n\n` +
-      `${refCode ? '🎁 *Вас пригласил друг!*\nПолучите бонусы при регистрации!\n\n' : ''}` +
+      `${refCode ? '🎁 *Вас пригласил друг!*\nПолучите скидку 25% на первый заказ!\n\n' : ''}` +
       `✨ *Что вы получите:*\n` +
       `• Скидки до 20% по программе лояльности\n` +
       `• 5% кешбэк с каждого заказа\n` +
@@ -1232,7 +1250,11 @@ app.post('/api/verify-tronscan', async (req, res) => {
       return res.status(400).json({ error: 'Transaction hash required' });
     }
 
-    console.log(`Verifying TronScan transaction: ${txHash}`);
+    if (!recipientAddress) {
+      return res.status(400).json({ error: 'Recipient address required' });
+    }
+
+    console.log(`Verifying TronScan transaction: ${txHash} to ${recipientAddress}`);
 
     // Query TronScan API
     const apiUrl = `https://apilist.tronscan.org/api/transaction-info?hash=${txHash}`;
@@ -1301,14 +1323,19 @@ app.post('/api/verify-tronscan', async (req, res) => {
       }
     }
 
-    // Verify recipient address if provided
-    if (recipientAddress && transferTo) {
-      if (transferTo.toLowerCase() !== recipientAddress.toLowerCase()) {
-        return res.json({
-          verified: false,
-          error: 'Неверный адрес получателя'
-        });
-      }
+    // Verify recipient address (mandatory)
+    if (!transferTo) {
+      return res.json({
+        verified: false,
+        error: 'Не удалось определить адрес получателя в транзакции'
+      });
+    }
+
+    if (transferTo.toLowerCase() !== recipientAddress.toLowerCase()) {
+      return res.json({
+        verified: false,
+        error: `Неверный адрес получателя. Ожидалось: ${recipientAddress}, получено: ${transferTo}`
+      });
     }
 
     // Transaction verified successfully

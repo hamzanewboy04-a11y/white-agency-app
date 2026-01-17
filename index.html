@@ -259,6 +259,17 @@
                 </div>
             </div>
         </div>
+
+        <!-- Referral Discount Banner (for referred users on first order) -->
+        <div id="referralDiscountBanner" class="hidden card rounded-2xl p-4 mt-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white">
+            <div class="flex items-center gap-3">
+                <div class="text-4xl">🎁</div>
+                <div class="flex-1">
+                    <p class="font-bold text-base">У вас скидка 25% на первый заказ!</p>
+                    <p class="text-sm opacity-90 mt-1">Бонус от реферальной программы</p>
+                </div>
+            </div>
+        </div>
     </section>
 
     <!-- Quick Actions -->
@@ -468,6 +479,10 @@
                     <span class="text-sm">Скидка <span id="discountLevel">Bronze</span> (-<span id="discountPercent">5</span>%)</span>
                     <span class="font-medium" id="orderDiscount">-$0.50</span>
                 </div>
+                <div id="referralDiscountApplied" class="hidden flex justify-between items-center text-purple-600">
+                    <span class="text-sm">🎁 Реферальная скидка (-25%)</span>
+                    <span class="font-medium" id="referralDiscountAmount">-$0.00</span>
+                </div>
                 <div class="flex justify-between items-center">
                     <div class="flex items-center gap-2">
                         <span class="text-sm">Использовать кешбэк</span>
@@ -483,17 +498,17 @@
                     <span class="font-medium" id="cashbackAmount">-$0.00</span>
                 </div>
                 <div class="border-t pt-3">
-                    <div class="flex gap-2 mb-2">
-                        <input type="text" id="promoCodeInput" placeholder="Промокод"
-                            class="flex-1 px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black uppercase"
+                    <div class="mb-2">
+                        <input type="text" id="promoCodeInput" placeholder="Введите промокод"
+                            class="w-full px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black uppercase mb-2"
                             onkeyup="this.value = this.value.toUpperCase()">
-                        <button onclick="applyPromoCode()" class="px-4 py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition">
-                            Применить
+                        <button onclick="applyPromoCode()" class="w-full py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition">
+                            ✓ Применить промокод
                         </button>
                     </div>
-                    <div id="promoApplied" class="hidden flex justify-between items-center text-blue-600 text-sm">
-                        <span>Промокод <span id="appliedPromoCode"></span></span>
-                        <span class="font-medium" id="promoDiscount">-$0.00</span>
+                    <div id="promoApplied" class="hidden flex justify-between items-center text-blue-600 text-sm bg-blue-50 px-3 py-2 rounded-lg">
+                        <span>🎁 Промокод <span id="appliedPromoCode" class="font-semibold"></span></span>
+                        <span class="font-bold" id="promoDiscount">-$0.00</span>
                     </div>
                 </div>
                 <div class="border-t pt-3 flex justify-between items-center">
@@ -543,19 +558,19 @@
             <h2 class="text-xl font-bold text-center mb-2">👥 Реферальная программа</h2>
             <p class="text-sm text-gray-500 text-center mb-6">Приглашай друзей и зарабатывай</p>
             
-            <div class="card rounded-2xl p-4 bg-gradient-to-r from-green-600 to-green-500 text-white mb-4">
+            <div class="card rounded-2xl p-5 bg-gradient-to-br from-green-600 to-green-700 text-white mb-4 shadow-lg">
                 <div class="text-center mb-3">
-                    <p class="text-4xl font-bold">25%</p>
-                    <p class="text-sm opacity-90">с первого заказа каждого друга</p>
+                    <p class="text-5xl font-bold drop-shadow-lg">25%</p>
+                    <p class="text-base font-medium mt-2">с первого заказа каждого друга</p>
                 </div>
-                <p class="text-xs opacity-80 text-center">Бессрочно и без лимитов!</p>
+                <p class="text-sm text-center bg-white/20 rounded-full px-4 py-1 mx-auto inline-block">Бессрочно и без лимитов!</p>
             </div>
-            
-            <div class="card rounded-2xl p-4 bg-gray-900 text-white mb-4">
-                <p class="text-sm opacity-80 mb-2">Ваша реферальная ссылка</p>
+
+            <div class="card rounded-2xl p-4 mb-4" style="background: var(--tg-theme-secondary-bg-color); border: 1px solid rgba(128,128,128,0.2);">
+                <p class="text-sm mb-2 font-medium">Ваша реферальная ссылка</p>
                 <div class="flex gap-2">
-                    <input type="text" readonly id="refLinkInput" value="" class="flex-1 bg-white/10 px-3 py-2 rounded-lg text-sm font-mono">
-                    <button onclick="copyRefLink()" class="px-4 py-2 bg-white text-black rounded-lg text-sm font-medium hover:bg-gray-100">📋</button>
+                    <input type="text" readonly id="refLinkInput" value="" class="flex-1 bg-black/5 px-3 py-2 rounded-lg text-xs font-mono border border-gray-200" style="color: var(--tg-theme-text-color);">
+                    <button onclick="copyRefLink()" class="px-4 py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 whitespace-nowrap">📋 Копировать</button>
                 </div>
             </div>
             
@@ -822,6 +837,7 @@
             API_URL: 'https://white-agency-app-production.up.railway.app', // Fixed: added https://
             BOT_USERNAME: 'WhiteAgency_Official_bot',
             MANAGER_USERNAME: 'WhiteAgency_manager',
+            PAYMENT_ADDRESS: 'TUgg2zUetS8JicSZNSxpTnGeA2hPGfVt9Q', // TRC-20 USDT payment address
             CASHBACK_PERCENT: 5,
             REFERRAL_PERCENT: 25,
             REVIEW_BONUS: 2,
@@ -1044,6 +1060,17 @@
             
             const unread = user.notifications.filter(n => !n.read).length;
             document.getElementById('notifDot').style.display = unread > 0 ? 'block' : 'none';
+
+            // Show/hide referral discount banner
+            const isReferred = user.orders && user.orders.length === 0 && user.referredBy;
+            const banner = document.getElementById('referralDiscountBanner');
+            if (banner) {
+                if (isReferred) {
+                    banner.classList.remove('hidden');
+                } else {
+                    banner.classList.add('hidden');
+                }
+            }
         }
 
         function updateProgressBar() {
@@ -1434,6 +1461,14 @@
             const discountAmount = basePrice * (discount / 100);
             let afterDiscount = basePrice - discountAmount;
 
+            // Check if user is eligible for referral discount (first order)
+            const isReferred = state.user && state.user.orders && state.user.orders.length === 0 && state.user.referredBy;
+            let referralDiscountAmount = 0;
+            if (isReferred) {
+                referralDiscountAmount = afterDiscount * 0.25; // 25% referral discount
+                afterDiscount -= referralDiscountAmount;
+            }
+
             // Apply promo code
             let promoDiscountAmount = 0;
             if (appliedPromo) {
@@ -1463,6 +1498,14 @@
                 document.getElementById('cashbackAmount').textContent = `-$${cashbackUsed.toFixed(2)}`;
             } else {
                 document.getElementById('cashbackApplied').classList.add('hidden');
+            }
+
+            // Show referral discount if applied
+            if (isReferred && referralDiscountAmount > 0) {
+                document.getElementById('referralDiscountApplied').classList.remove('hidden');
+                document.getElementById('referralDiscountAmount').textContent = `-$${referralDiscountAmount.toFixed(2)}`;
+            } else {
+                document.getElementById('referralDiscountApplied').classList.add('hidden');
             }
 
             // Show promo discount if applied
@@ -1510,6 +1553,14 @@
             const discountAmount = basePrice * (level.discount / 100);
             let afterDiscount = basePrice - discountAmount;
 
+            // Check if user is eligible for referral discount (first order)
+            const isReferred = state.user && state.user.orders && state.user.orders.length === 0 && state.user.referredBy;
+            let referralDiscountAmount = 0;
+            if (isReferred) {
+                referralDiscountAmount = afterDiscount * 0.25; // 25% referral discount
+                afterDiscount -= referralDiscountAmount;
+            }
+
             // Apply promo code
             let promoDiscountAmount = 0;
             if (appliedPromo) {
@@ -1536,6 +1587,7 @@
                 media: uploadedFiles, // Array of uploaded files with base64 data
                 basePrice,
                 discount: discountAmount,
+                referralDiscount: referralDiscountAmount,
                 promoCode: appliedPromo ? appliedPromo.code : null,
                 promoDiscount: promoDiscountAmount,
                 cashbackUsed,
@@ -1856,7 +1908,8 @@
                 // Verify transaction on TronScan
                 const verification = await apiRequest('/api/verify-tronscan', 'POST', {
                     txHash: txHash,
-                    expectedAmount: pendingOrder.total
+                    expectedAmount: pendingOrder.total,
+                    recipientAddress: CONFIG.PAYMENT_ADDRESS
                 });
 
                 confirmBtn.disabled = false;
