@@ -238,6 +238,16 @@ try {
   }
 }
 
+// Add file_url column to orders if it doesn't exist
+try {
+  db.prepare('ALTER TABLE orders ADD COLUMN file_url TEXT').run();
+  console.log('Migration: Added file_url column to orders table');
+} catch (error) {
+  if (!error.message.includes('duplicate column name')) {
+    console.error('Migration error:', error.message);
+  }
+}
+
 // Seed initial products if table is empty
 const productCount = db.prepare('SELECT COUNT(*) as count FROM products').get();
 if (productCount.count === 0) {
@@ -831,18 +841,23 @@ app.get('/api/admin/referrals', adminAuthMiddleware, (req, res) => {
 app.post('/api/admin/orders/:orderId/status', adminAuthMiddleware, (req, res) => {
   try {
     const { orderId } = req.params;
-    const { status } = req.body;
-    
+    const { status, file_url } = req.body;
+
     const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
     if (!order) {
       return res.status(404).json({ error: 'Order not found' });
     }
-    
-    db.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, orderId);
-    
+
+    // Update status and file_url if provided
+    if (file_url) {
+      db.prepare('UPDATE orders SET status = ?, file_url = ? WHERE id = ?').run(status, file_url, orderId);
+    } else {
+      db.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, orderId);
+    }
+
     // Notify user
-    notifyOrderStatus(order.user_id, orderId, status);
-    
+    notifyOrderStatus(order.user_id, orderId, status, file_url);
+
     res.json({ success: true });
   } catch (error) {
     console.error('Error updating order status:', error);
@@ -1077,38 +1092,52 @@ function processReferralPayment(userId) {
 }
 
 // Notify user about order status
-async function notifyOrderStatus(userId, orderId, status) {
+async function notifyOrderStatus(userId, orderId, status, fileUrl = null) {
   try {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
     if (!user) return;
-    
+
     const statuses = {
       pending: { emoji: '⏳', text: 'Заказ ожидает обработки' },
       working: { emoji: '🎨', text: 'Ваш заказ в работе!' },
       completed: { emoji: '✅', text: 'Ваш заказ готов!' },
       cancelled: { emoji: '❌', text: 'Заказ отменён' }
     };
-    
+
     const statusInfo = statuses[status] || { emoji: '📦', text: 'Статус заказа обновлён' };
-    
+
+    // Build notification message
+    let notificationMsg = `Заказ #${orderId}`;
+    if (fileUrl && status === 'completed') {
+      notificationMsg += `\n\n📎 Файлы готовы: ${fileUrl}`;
+    }
+
     // Add notification to DB
     db.prepare(`
       INSERT INTO notifications (user_id, title, message)
       VALUES (?, ?, ?)
-    `).run(userId, `${statusInfo.emoji} ${statusInfo.text}`, `Заказ #${orderId}`);
-    
+    `).run(userId, `${statusInfo.emoji} ${statusInfo.text}`, notificationMsg);
+
     // Send Telegram message
     const webAppUrl = process.env.WEBAPP_URL || 'https://white-agency-app.vercel.app';
-    await bot.telegram.sendMessage(user.telegram_id,
-      `${statusInfo.emoji} ${statusInfo.text}\n\nЗаказ #${orderId}`,
-      {
-        reply_markup: {
-          inline_keyboard: [[
-            { text: '📱 Открыть в приложении', web_app: { url: webAppUrl } }
-          ]]
-        }
+    let telegramMsg = `${statusInfo.emoji} ${statusInfo.text}\n\nЗаказ #${orderId}`;
+
+    if (fileUrl && status === 'completed') {
+      telegramMsg += `\n\n📎 Скачать файлы:\n${fileUrl}`;
+    }
+
+    const buttons = [[{ text: '📱 Открыть в приложении', web_app: { url: webAppUrl } }]];
+
+    // Add download button if file URL is provided
+    if (fileUrl && status === 'completed') {
+      buttons.push([{ text: '📥 Скачать файлы', url: fileUrl }]);
+    }
+
+    await bot.telegram.sendMessage(user.telegram_id, telegramMsg, {
+      reply_markup: {
+        inline_keyboard: buttons
       }
-    );
+    });
   } catch (error) {
     console.error('Failed to notify order status:', error.message);
   }

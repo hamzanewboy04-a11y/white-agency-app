@@ -1309,45 +1309,100 @@
         return;
       }
       
-      document.getElementById('usersList').innerHTML = filtered.map(user => `
-        <div class="glass rounded-xl p-4 fade-in border border-gray-800/50">
-          <div class="flex flex-wrap items-center justify-between gap-4">
+      document.getElementById('usersList').innerHTML = filtered.map(user => {
+        const joinDate = user.created_at ? new Date(user.created_at).toLocaleDateString('ru-RU') : 'Неизвестно';
+        const orderCount = ordersData.filter(o => o.user_id === user.id).length;
+        const referrer = usersData.find(u => u.id === user.referred_by);
+        const referrerName = referrer ? `${referrer.name} (@${referrer.username})` : 'Прямой заход';
+
+        return `
+        <div class="glass rounded-xl p-5 fade-in border border-gray-800/50">
+          <!-- Header Row -->
+          <div class="flex items-center justify-between mb-4">
             <div class="flex items-center gap-4">
-              <div class="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center text-sm font-medium">
+              <div class="w-12 h-12 bg-gradient-to-br from-gray-700 to-gray-900 rounded-full flex items-center justify-center text-lg font-bold">
                 ${(user.name || 'U').charAt(0).toUpperCase()}
               </div>
               <div>
-                <div class="font-medium">${user.name || 'Без имени'}</div>
-                <div class="text-sm text-gray-500">@${user.username || 'нет username'}</div>
-                <div class="text-xs text-gray-600">ID: ${user.telegram_id}</div>
+                <div class="font-semibold text-lg">${user.name || 'Без имени'}</div>
+                <div class="text-sm text-gray-400">@${user.username || 'нет username'}</div>
               </div>
             </div>
-            <div class="flex items-center gap-6 text-sm">
-              <div class="text-center">
-                <div class="text-sm font-medium ${getLevelColor(user.level)}">${(user.level || 'none').toUpperCase()}</div>
-                <div class="text-xs text-gray-600">Уровень</div>
+            <div class="text-right">
+              <div class="text-xs text-gray-500">Telegram ID</div>
+              <div class="text-sm font-mono text-gray-300">${user.telegram_id}</div>
+            </div>
+          </div>
+
+          <!-- Stats Grid -->
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <div class="bg-gray-900/50 rounded-lg p-3 text-center">
+              <div class="text-sm font-medium ${getLevelColor(user.level)}">${(user.level || 'none').toUpperCase()}</div>
+              <div class="text-xs text-gray-500 mt-1">Уровень</div>
+            </div>
+            <div class="bg-gray-900/50 rounded-lg p-3 text-center">
+              <div class="text-sm font-bold text-green-400">$${(user.total_spent || 0).toFixed(2)}</div>
+              <div class="text-xs text-gray-500 mt-1">Потрачено</div>
+            </div>
+            <div class="bg-gray-900/50 rounded-lg p-3 text-center">
+              <div class="text-sm font-bold text-blue-400">$${(user.cashback || 0).toFixed(2)}</div>
+              <div class="text-xs text-gray-500 mt-1">Кешбэк</div>
+            </div>
+            <div class="bg-gray-900/50 rounded-lg p-3 text-center">
+              <div class="text-sm font-bold text-purple-400">$${(user.referral_income || 0).toFixed(2)}</div>
+              <div class="text-xs text-gray-500 mt-1">Реф. доход</div>
+            </div>
+          </div>
+
+          <!-- Details Grid -->
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 text-sm">
+            <div class="bg-gray-900/30 rounded-lg p-3">
+              <div class="text-xs text-gray-500 mb-1">📅 Регистрация</div>
+              <div class="text-gray-300">${joinDate}</div>
+            </div>
+            <div class="bg-gray-900/30 rounded-lg p-3">
+              <div class="text-xs text-gray-500 mb-1">🛍 Заказов</div>
+              <div class="text-gray-300">${orderCount}</div>
+            </div>
+            <div class="bg-gray-900/30 rounded-lg p-3">
+              <div class="text-xs text-gray-500 mb-1">👤 Пригласил</div>
+              <div class="text-gray-300 text-xs">${referrerName}</div>
+            </div>
+          </div>
+
+          ${user.trc20_wallet ? `
+          <div class="bg-gray-900/30 rounded-lg p-3 mb-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-xs text-gray-500 mb-1">💳 TRC20 кошелёк</div>
+                <div class="text-xs font-mono text-gray-300">${user.trc20_wallet}</div>
               </div>
-              <div class="text-center">
-                <div class="text-sm font-medium text-white">$${user.total_spent || 0}</div>
-                <div class="text-xs text-gray-600">Потрачено</div>
-              </div>
-              <div class="text-center">
-                <div class="text-sm font-medium text-gray-400">$${(user.cashback || 0).toFixed(2)}</div>
-                <div class="text-xs text-gray-600">Кешбэк</div>
-              </div>
-              <button onclick="sendMessageToUser(${user.id}, '${user.name || 'Пользователь'}')" class="bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg text-sm transition" title="Отправить сообщение">
-                ✉
-              </button>
-              <button onclick="addCashback(${user.id}, '${user.name || 'Пользователь'}')" class="bg-green-800 hover:bg-green-700 px-3 py-2 rounded-lg text-sm transition" title="Добавить кешбек">
-                💰
-              </button>
-              <button onclick="showUserActivity(${user.id}, '${user.name || 'Пользователь'}')" class="bg-blue-800 hover:bg-blue-700 px-3 py-2 rounded-lg text-sm transition" title="История активности">
-                📊
+              <button onclick="navigator.clipboard.writeText('${user.trc20_wallet}'); showToast('Кошелёк скопирован', 'success')"
+                class="bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded text-xs transition">
+                📋 Копировать
               </button>
             </div>
           </div>
+          ` : ''}
+
+          <!-- Actions -->
+          <div class="flex flex-wrap gap-2">
+            <button onclick="sendMessageToUser(${user.id}, '${user.name || 'Пользователь'}')"
+              class="flex-1 bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg text-sm transition">
+              ✉ Сообщение
+            </button>
+            <button onclick="addCashback(${user.id}, '${user.name || 'Пользователь'}')"
+              class="flex-1 bg-green-800 hover:bg-green-700 px-3 py-2 rounded-lg text-sm transition">
+              💰 Кешбэк
+            </button>
+            <button onclick="showUserActivity(${user.id}, '${user.name || 'Пользователь'}')"
+              class="flex-1 bg-blue-800 hover:bg-blue-700 px-3 py-2 rounded-lg text-sm transition">
+              📊 История
+            </button>
+          </div>
         </div>
-      `).join('');
+        `;
+      }).join('');
     }
 
     function renderReferrals() {
@@ -1643,7 +1698,22 @@
     // Actions
     async function updateOrderStatus(orderId, status) {
       try {
-        await apiCall(`/api/admin/orders/${orderId}/status`, 'POST', { status });
+        let fileUrl = null;
+
+        // If marking as completed, ask for file attachment (optional)
+        if (status === 'completed') {
+          fileUrl = prompt(
+            'Прикрепить файл к заказу? (опционально)\n\n' +
+            'Введите ссылку на файл (Google Drive, Dropbox и т.д.)\n' +
+            'Или оставьте пустым, если файл не нужен:'
+          );
+        }
+
+        await apiCall(`/api/admin/orders/${orderId}/status`, 'POST', {
+          status,
+          file_url: fileUrl || undefined
+        });
+
         showToast(`Статус изменён на "${getStatusText(status)}"`, 'success');
         await loadOrders();
         openOrderModal(orderId);
