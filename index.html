@@ -907,21 +907,40 @@
         }
 
         async function loadUserData() {
-            if (CONFIG.API_URL) {
-                const data = await apiRequest('/api/user');
-                if (data) {
-                    state.user = data;
-                    updateUI();
-                    return;
+            try {
+                // Try to load from API first
+                if (CONFIG.API_URL) {
+                    try {
+                        const data = await apiRequest('/api/user');
+                        if (data && data.id) {
+                            state.user = data;
+                            updateUI();
+                            return;
+                        }
+                    } catch (e) {
+                        console.log('API user load failed, using local storage:', e.message);
+                    }
                 }
-            }
-            
-            const saved = localStorage.getItem('whiteagency_user');
-            if (saved) {
-                state.user = JSON.parse(saved);
-            } else {
+
+                // Try to load from localStorage
+                const saved = localStorage.getItem('whiteagency_user');
+                if (saved) {
+                    try {
+                        const parsed = JSON.parse(saved);
+                        if (parsed && parsed.id) {
+                            state.user = parsed;
+                            updateUI();
+                            return;
+                        }
+                    } catch (e) {
+                        console.log('localStorage parse failed:', e.message);
+                    }
+                }
+
+                // Create new user if nothing worked
+                console.log('Creating new user...');
                 state.user = {
-                    id: state.tgUser?.id || 'demo',
+                    id: state.tgUser?.id || 'demo_' + Date.now(),
                     name: state.tgUser?.first_name || 'Пользователь',
                     username: state.tgUser?.username || '',
                     level: 'none',
@@ -941,19 +960,46 @@
                     }
                 };
                 saveUserData();
+                updateUI();
+            } catch (error) {
+                console.error('Critical error in loadUserData:', error);
+                // Last resort - create minimal user
+                state.user = {
+                    id: 'emergency_' + Date.now(),
+                    name: 'Пользователь',
+                    username: '',
+                    level: 'none',
+                    totalSpent: 0,
+                    cashback: 0,
+                    referralCode: 'TEMP' + Math.random().toString(36).substr(2, 4).toUpperCase(),
+                    referrals: [],
+                    referralEarnings: 0,
+                    orders: [],
+                    cashbackHistory: [],
+                    notifications: [],
+                    trc20Wallet: '',
+                    settings: { notifOrders: true, notifPromo: true, notifRef: true }
+                };
             }
-            updateUI();
         }
 
         function saveUserData() {
-            localStorage.setItem('whiteagency_user', JSON.stringify(state.user));
+            try {
+                localStorage.setItem('whiteagency_user', JSON.stringify(state.user));
+            } catch (e) {
+                console.error('Failed to save to localStorage:', e);
+            }
 
             if (CONFIG.API_URL) {
-                // Only send name and trc20Wallet as the server expects
-                apiRequest('/api/user', 'POST', {
-                    name: state.user.name,
-                    trc20Wallet: state.user.trc20Wallet
-                });
+                try {
+                    // Only send name and trc20Wallet as the server expects
+                    apiRequest('/api/user', 'POST', {
+                        name: state.user.name,
+                        trc20Wallet: state.user.trc20Wallet
+                    });
+                } catch (e) {
+                    console.error('Failed to save to API:', e);
+                }
             }
         }
 
@@ -1579,23 +1625,66 @@
 
         // ==================== INIT ====================
         async function init() {
+            // Emergency timeout - hide loader after 5 seconds no matter what
+            const emergencyTimeout = setTimeout(() => {
+                console.warn('⚠️ Emergency timeout - forcing app to show');
+                document.getElementById('loadingScreen').style.display = 'none';
+                state.isLoading = false;
+            }, 5000);
+
             try {
                 console.log('🚀 Initializing app...');
+
+                // Init Telegram (safe, no async)
                 initTelegram();
                 console.log('✅ Telegram initialized');
 
-                initTonConnect();
-                console.log('✅ TON Connect initialized');
-
-                await loadUserData();
+                // Load user data (with timeout)
+                await Promise.race([
+                    loadUserData(),
+                    new Promise((resolve) => setTimeout(() => {
+                        console.warn('⚠️ loadUserData timeout, using local data');
+                        resolve();
+                    }, 3000))
+                ]);
                 console.log('✅ User data loaded');
+
+                // Init TON Connect in background (don't wait for it)
+                setTimeout(() => {
+                    try {
+                        initTonConnect();
+                        console.log('✅ TON Connect initialized');
+                    } catch (e) {
+                        console.log('ℹ️ TON Connect not available:', e.message);
+                    }
+                }, 100);
+
             } catch (error) {
                 console.error('❌ Error during initialization:', error);
-                // Show error to user
-                if (typeof showToast === 'function') {
-                    showToast('❌ Ошибка загрузки. Попробуйте перезапустить приложение');
+                // Ensure user data exists even on error
+                if (!state.user) {
+                    state.user = {
+                        id: 'demo_' + Date.now(),
+                        name: 'Пользователь',
+                        username: '',
+                        level: 'none',
+                        totalSpent: 0,
+                        cashback: 0,
+                        referralCode: 'DEMO' + Math.random().toString(36).substr(2, 4).toUpperCase(),
+                        referrals: [],
+                        referralEarnings: 0,
+                        orders: [],
+                        cashbackHistory: [],
+                        notifications: [],
+                        trc20Wallet: '',
+                        settings: { notifOrders: true, notifPromo: true, notifRef: true }
+                    };
                 }
+                updateUI();
             } finally {
+                // Clear emergency timeout
+                clearTimeout(emergencyTimeout);
+
                 // Always hide loading screen
                 document.getElementById('loadingScreen').style.display = 'none';
                 state.isLoading = false;
