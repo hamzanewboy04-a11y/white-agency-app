@@ -646,7 +646,18 @@
         <div class="p-6">
             <div class="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
             <h2 class="text-xl font-bold text-center mb-2">🛒 Корзина</h2>
-            <p class="text-sm text-gray-500 text-center mb-6">Ваши товары для заказа</p>
+            <p class="text-sm text-gray-500 text-center mb-4">Ваши товары для заказа</p>
+
+            <!-- Referral Discount Banner in Cart -->
+            <div id="cartReferralBanner" class="hidden mb-4 rounded-xl p-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white">
+                <div class="flex items-center gap-2">
+                    <span class="text-2xl">🎁</span>
+                    <div class="flex-1">
+                        <p class="font-bold text-sm">У вас скидка 25% на первый заказ!</p>
+                        <p class="text-xs opacity-90">Бонус от реферальной программы</p>
+                    </div>
+                </div>
+            </div>
 
             <div id="cartItems" class="space-y-3 mb-6">
                 <!-- Cart items will be rendered here -->
@@ -675,6 +686,10 @@
                     <div id="cartDiscount" class="flex justify-between text-sm text-green-600 hidden">
                         <span>Скидка по промокоду:</span>
                         <span id="cartDiscountAmount">-$0.00</span>
+                    </div>
+                    <div id="cartReferralDiscount" class="flex justify-between text-sm text-purple-600 hidden">
+                        <span>🎁 Реферальная скидка (25%):</span>
+                        <span id="cartReferralDiscountAmount">-$0.00</span>
                     </div>
                     <div class="flex justify-between items-center border-t pt-2">
                         <span class="text-lg font-semibold">Итого:</span>
@@ -2497,23 +2512,52 @@
             const totalItems = state.cart.reduce((sum, item) => sum + item.quantity, 0);
             const subtotal = state.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
-            let discount = 0;
-            if (state.appliedPromo) {
-                discount = state.appliedPromo.discount_amount;
+            // Check if user is referred and on first order
+            const isReferred = state.user && state.user.orders && state.user.orders.length === 0 && state.user.referredBy;
+
+            // Show/hide referral banner
+            const referralBanner = document.getElementById('cartReferralBanner');
+            if (referralBanner) {
+                if (isReferred) {
+                    referralBanner.classList.remove('hidden');
+                } else {
+                    referralBanner.classList.add('hidden');
+                }
             }
 
-            const totalPrice = subtotal - discount;
+            // Calculate referral discount first (25% off subtotal)
+            let referralDiscount = 0;
+            if (isReferred) {
+                referralDiscount = subtotal * 0.25;
+            }
+
+            // Calculate promo discount (on amount after referral discount)
+            let promoDiscount = 0;
+            if (state.appliedPromo) {
+                const afterReferral = subtotal - referralDiscount;
+                promoDiscount = (afterReferral * state.appliedPromo.discount_percent) / 100;
+            }
+
+            const totalPrice = subtotal - referralDiscount - promoDiscount;
 
             document.getElementById('cartItemCount').textContent = totalItems;
             document.getElementById('cartSubtotal').textContent = `$${subtotal.toFixed(2)}`;
             document.getElementById('cartTotal').textContent = `$${totalPrice.toFixed(2)}`;
 
-            // Show/hide discount
+            // Show/hide promo discount
             if (state.appliedPromo) {
                 document.getElementById('cartDiscount').classList.remove('hidden');
-                document.getElementById('cartDiscountAmount').textContent = `-$${discount.toFixed(2)}`;
+                document.getElementById('cartDiscountAmount').textContent = `-$${promoDiscount.toFixed(2)}`;
             } else {
                 document.getElementById('cartDiscount').classList.add('hidden');
+            }
+
+            // Show/hide referral discount
+            if (isReferred && referralDiscount > 0) {
+                document.getElementById('cartReferralDiscount').classList.remove('hidden');
+                document.getElementById('cartReferralDiscountAmount').textContent = `-$${referralDiscount.toFixed(2)}`;
+            } else {
+                document.getElementById('cartReferralDiscount').classList.add('hidden');
             }
         }
 
@@ -2581,14 +2625,24 @@
 
             const subtotal = state.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
-            let discountAmount = 0;
+            // Calculate referral discount first (25% off subtotal)
+            const isReferred = state.user && state.user.orders && state.user.orders.length === 0 && state.user.referredBy;
+            let referralDiscountAmount = 0;
+            if (isReferred) {
+                referralDiscountAmount = subtotal * 0.25;
+            }
+
+            // Calculate promo discount (on amount after referral discount)
+            let promoDiscountAmount = 0;
             let promoCode = null;
             if (state.appliedPromo) {
-                discountAmount = state.appliedPromo.discount_amount;
+                const afterReferral = subtotal - referralDiscountAmount;
+                promoDiscountAmount = (afterReferral * state.appliedPromo.discount_percent) / 100;
                 promoCode = state.appliedPromo.code;
             }
 
-            const totalPrice = subtotal - discountAmount;
+            const totalDiscountAmount = referralDiscountAmount + promoDiscountAmount;
+            const totalPrice = subtotal - totalDiscountAmount;
 
             const orderData = {
                 id: 'ORD' + Date.now(),
@@ -2596,7 +2650,8 @@
                 items: items,
                 comment: comment,
                 promo_code: promoCode,
-                discount_amount: discountAmount,
+                discount_amount: totalDiscountAmount,
+                referral_discount: isReferred ? referralDiscountAmount : 0,
                 subtotal: subtotal,
                 total: totalPrice,
                 status: 'awaiting_manager',

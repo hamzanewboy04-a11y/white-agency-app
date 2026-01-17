@@ -373,7 +373,10 @@ app.get('/api/user', authMiddleware, (req, res) => {
     
     // Get notifications
     const notifications = db.prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50').all(user.id);
-    
+
+    // Get invoices
+    const invoices = db.prepare('SELECT * FROM invoices WHERE user_id = ? ORDER BY created_at DESC').all(user.id);
+
     res.json({
       id: user.id,
       telegramId: user.telegram_id,
@@ -425,6 +428,16 @@ app.get('/api/user', authMiddleware, (req, res) => {
         read: n.read === 1,
         date: n.created_at
       })),
+      invoices: invoices.map(i => ({
+        id: i.id,
+        order_id: i.order_id,
+        amount: i.amount,
+        status: i.status,
+        tx_hash: i.tx_hash,
+        wallet_address: i.wallet_address,
+        created_at: i.created_at,
+        paid_at: i.paid_at
+      })),
       settings: {
         notifOrders: true,
         notifPromo: true,
@@ -470,8 +483,8 @@ app.post('/api/orders', authMiddleware, (req, res) => {
     
     // Insert order
     db.prepare(`
-      INSERT INTO orders (id, user_id, service, niche, formats, description, refs, media, base_price, discount, cashback_used, total, cashback_earned, status, tx_hash, payment_method)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+      INSERT INTO orders (id, user_id, service, niche, formats, description, refs, media, base_price, discount, cashback_used, total, cashback_earned, status, tx_hash, payment_method, promo_code, discount_amount, subtotal)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?)
     `).run(
       orderId,
       user.id,
@@ -487,7 +500,10 @@ app.post('/api/orders', authMiddleware, (req, res) => {
       order.total,
       order.cashbackEarned,
       order.txHash || null,
-      order.paymentMethod || null
+      order.paymentMethod || null,
+      order.promoCode || null,
+      (order.promoDiscount || 0) + (order.referralDiscount || 0),
+      order.basePrice
     );
     
     // Update user cashback and total spent
@@ -570,6 +586,27 @@ app.post('/api/cart-orders', authMiddleware, (req, res) => {
       'awaiting_manager',
       new Date().toISOString()
     );
+
+    // Calculate and add cashback (5%)
+    const cashbackAmount = orderData.total * 0.05;
+    db.prepare(`
+      UPDATE users SET
+        cashback = cashback + ?,
+        total_spent = total_spent + ?
+      WHERE id = ?
+    `).run(cashbackAmount, orderData.total, user.id);
+
+    // Add cashback history
+    db.prepare(`
+      INSERT INTO cashback_history (user_id, amount, description)
+      VALUES (?, ?, ?)
+    `).run(user.id, cashbackAmount, `Кешбэк за заказ #${orderId}`);
+
+    // Check and update user level
+    updateUserLevel(user.id);
+
+    // Process referral payment for first order
+    processReferralPayment(user.id);
 
     // Add notification to user
     db.prepare(`
@@ -979,8 +1016,10 @@ function processReferralPayment(userId) {
     
     const firstOrder = db.prepare('SELECT * FROM orders WHERE user_id = ? ORDER BY created_at LIMIT 1').get(userId);
     if (!firstOrder) return;
-    
-    const referralAmount = firstOrder.total * 0.25; // 25%
+
+    // Use subtotal (before discounts) or base_price if subtotal not available
+    const baseAmount = firstOrder.subtotal || firstOrder.base_price || firstOrder.total;
+    const referralAmount = baseAmount * 0.25; // 25% of original price
     
     // Update referrer earnings
     db.prepare(`
