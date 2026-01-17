@@ -43,6 +43,7 @@ db.exec(`
     formats TEXT,
     description TEXT,
     refs TEXT,
+    media TEXT,
     base_price REAL,
     discount REAL,
     cashback_used REAL,
@@ -121,6 +122,19 @@ db.exec(`
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
 `);
+
+// ==================== MIGRATIONS ====================
+
+// Add media column to orders if it doesn't exist
+try {
+  db.prepare('ALTER TABLE orders ADD COLUMN media TEXT').run();
+  console.log('Migration: Added media column to orders table');
+} catch (error) {
+  // Column already exists, ignore
+  if (!error.message.includes('duplicate column name')) {
+    console.error('Migration error:', error.message);
+  }
+}
 
 // ==================== AUTH ====================
 
@@ -266,6 +280,7 @@ app.get('/api/user', authMiddleware, (req, res) => {
         formats: JSON.parse(o.formats || '[]'),
         description: o.description,
         refs: o.refs,
+        media: JSON.parse(o.media || '[]'),
         basePrice: o.base_price,
         discount: o.discount,
         cashbackUsed: o.cashback_used,
@@ -340,8 +355,8 @@ app.post('/api/orders', authMiddleware, (req, res) => {
     
     // Insert order
     db.prepare(`
-      INSERT INTO orders (id, user_id, service, niche, formats, description, refs, base_price, discount, cashback_used, total, cashback_earned, status, tx_hash, payment_method)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+      INSERT INTO orders (id, user_id, service, niche, formats, description, refs, media, base_price, discount, cashback_used, total, cashback_earned, status, tx_hash, payment_method)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
     `).run(
       orderId,
       user.id,
@@ -350,6 +365,7 @@ app.post('/api/orders', authMiddleware, (req, res) => {
       JSON.stringify(order.formats || []),
       order.description || '',
       order.refs || '',
+      JSON.stringify(order.media || []),
       order.basePrice,
       order.discount,
       order.cashbackUsed || 0,

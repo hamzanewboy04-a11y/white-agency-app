@@ -748,16 +748,17 @@
             
             <!-- Payment Methods Tabs -->
             <div class="flex gap-2 mb-6">
-                <button onclick="selectPaymentMethod('ton')" class="payment-method-btn flex-1 py-3 rounded-xl bg-blue-500 text-white font-medium transition-all" data-method="ton">
+                <!-- TON payment hidden by default as requested -->
+                <button onclick="selectPaymentMethod('ton')" class="payment-method-btn hidden flex-1 py-3 rounded-xl bg-blue-500 text-white font-medium transition-all" data-method="ton">
                     💎 TON
                 </button>
-                <button onclick="selectPaymentMethod('usdt')" class="payment-method-btn flex-1 py-3 rounded-xl bg-gray-100 font-medium transition-all" data-method="usdt">
+                <button onclick="selectPaymentMethod('usdt')" class="payment-method-btn flex-1 py-3 rounded-xl bg-black text-white font-medium transition-all" data-method="usdt">
                     💵 USDT TRC-20
                 </button>
             </div>
-            
-            <!-- TON Payment -->
-            <div id="tonPayment" class="space-y-4">
+
+            <!-- TON Payment (hidden) -->
+            <div id="tonPayment" class="space-y-4 hidden">
                 <div class="card rounded-2xl p-4 bg-gradient-to-r from-blue-500 to-blue-600 text-white">
                     <p class="text-sm opacity-90 mb-1">Сумма в TON (примерно)</p>
                     <p class="text-3xl font-bold" id="tonAmount">~ 0 TON</p>
@@ -771,12 +772,12 @@
                 <p class="text-xs text-gray-400 text-center">Откроется ваш TON-кошелёк для подтверждения</p>
             </div>
             
-            <!-- USDT TRC-20 Payment -->
-            <div id="usdtPayment" class="space-y-4 hidden">
+            <!-- USDT TRC-20 Payment (Default) -->
+            <div id="usdtPayment" class="space-y-4">
                 <div class="card rounded-2xl p-4 border-2 border-dashed border-gray-300">
                     <p class="text-sm text-gray-500 mb-2">Отправьте USDT (TRC-20) на адрес:</p>
                     <div class="bg-gray-100 rounded-xl p-3 flex items-center gap-2">
-                        <code class="text-xs flex-1 break-all font-mono" id="usdtAddress">TUgg2zUetS8JicSZNSxpTnGeA2hPGfVt9Q</code>
+                        <code class="text-xs flex-1 break-all font-mono" id="usdtAddress">TAXtuQh2zJHks5yZQ2zzVdEFExs7ktoYuV</code>
                         <button onclick="copyUsdtAddress()" class="p-2 hover:bg-gray-200 rounded-lg transition-colors">
                             📋
                         </button>
@@ -837,7 +838,7 @@
             API_URL: 'https://white-agency-app-production.up.railway.app', // Fixed: added https://
             BOT_USERNAME: 'WhiteAgency_Official_bot',
             MANAGER_USERNAME: 'WhiteAgency_manager',
-            PAYMENT_ADDRESS: 'TUgg2zUetS8JicSZNSxpTnGeA2hPGfVt9Q', // TRC-20 USDT payment address
+            PAYMENT_ADDRESS: 'TAXtuQh2zJHks5yZQ2zzVdEFExs7ktoYuV', // TRC-20 USDT payment address
             CASHBACK_PERCENT: 5,
             REFERRAL_PERCENT: 25,
             REVIEW_BONUS: 2,
