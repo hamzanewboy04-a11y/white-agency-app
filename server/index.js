@@ -123,6 +123,34 @@ db.exec(`
     FOREIGN KEY (promo_id) REFERENCES promo_codes(id),
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
+
+  CREATE TABLE IF NOT EXISTS products (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    price INTEGER NOT NULL,
+    icon TEXT DEFAULT '🎨',
+    sort_order INTEGER DEFAULT 0,
+    is_active INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS invoices (
+    id TEXT PRIMARY KEY,
+    order_id TEXT UNIQUE,
+    user_id INTEGER,
+    amount REAL NOT NULL,
+    promo_code TEXT,
+    discount_amount REAL DEFAULT 0,
+    final_amount REAL NOT NULL,
+    payment_address TEXT,
+    tx_hash TEXT,
+    status TEXT DEFAULT 'awaiting_payment',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    paid_at DATETIME,
+    FOREIGN KEY (order_id) REFERENCES orders(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
 `);
 
 // ==================== MIGRATIONS ====================
@@ -155,6 +183,27 @@ try {
   if (!error.message.includes('duplicate column name')) {
     console.error('Migration error:', error.message);
   }
+}
+
+// Seed initial products if table is empty
+const productCount = db.prepare('SELECT COUNT(*) as count FROM products').get();
+if (productCount.count === 0) {
+  const initialProducts = [
+    { name: 'Статика', description: 'Статичное изображение для рекламы', price: 10, icon: '🎨', sort_order: 1 },
+    { name: 'Пак статики 5 шт', description: 'Набор из 5 статичных изображений', price: 30, icon: '🎬', sort_order: 2 },
+    { name: 'Видео-креатив', description: 'Видеоролик для рекламы', price: 25, icon: '🎥', sort_order: 3 },
+    { name: 'Липсинг', description: 'Видео с синхронизацией губ', price: 40, icon: '🗣️', sort_order: 4 },
+    { name: 'AI-аватар', description: 'Сгенерированный AI аватар', price: 30, icon: '🤖', sort_order: 5 },
+    { name: 'UGC видео', description: 'User Generated Content видео', price: 50, icon: '📹', sort_order: 6 },
+    { name: 'Пресет для видео', description: 'Готовый пресет для обработки', price: 15, icon: '✨', sort_order: 7 },
+    { name: 'Монтаж видео', description: 'Профессиональный монтаж', price: 35, icon: '💻', sort_order: 8 }
+  ];
+
+  const insertProduct = db.prepare('INSERT INTO products (name, description, price, icon, sort_order) VALUES (?, ?, ?, ?, ?)');
+  for (const product of initialProducts) {
+    insertProduct.run(product.name, product.description, product.price, product.icon, product.sort_order);
+  }
+  console.log('Migration: Seeded initial products');
 }
 
 // ==================== AUTH ====================
@@ -1191,6 +1240,241 @@ app.post('/api/admin/settings', adminAuthMiddleware, (req, res) => {
   } catch (error) {
     console.error('Update settings error:', error);
     res.status(500).json({ error: 'Failed to update settings' });
+  }
+});
+
+// ==================== PRODUCTS ====================
+
+// Get all products (public)
+app.get('/api/products', (req, res) => {
+  try {
+    const products = db.prepare('SELECT * FROM products WHERE is_active = 1 ORDER BY sort_order, id').all();
+    res.json(products);
+  } catch (error) {
+    console.error('Get products error:', error);
+    res.status(500).json({ error: 'Failed to get products' });
+  }
+});
+
+// Get all products (admin - including inactive)
+app.get('/api/admin/products', adminAuthMiddleware, (req, res) => {
+  try {
+    const products = db.prepare('SELECT * FROM products ORDER BY sort_order, id').all();
+    res.json(products);
+  } catch (error) {
+    console.error('Get products error:', error);
+    res.status(500).json({ error: 'Failed to get products' });
+  }
+});
+
+// Create product (admin only)
+app.post('/api/admin/products', adminAuthMiddleware, (req, res) => {
+  try {
+    const { name, description, price, icon, sort_order } = req.body;
+
+    const result = db.prepare(`
+      INSERT INTO products (name, description, price, icon, sort_order)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(name, description || '', price, icon || '🎨', sort_order || 0);
+
+    const product = db.prepare('SELECT * FROM products WHERE id = ?').get(result.lastInsertRowid);
+    res.json(product);
+  } catch (error) {
+    console.error('Create product error:', error);
+    res.status(500).json({ error: 'Failed to create product' });
+  }
+});
+
+// Update product (admin only)
+app.put('/api/admin/products/:id', adminAuthMiddleware, (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, description, price, icon, sort_order, is_active } = req.body;
+
+    db.prepare(`
+      UPDATE products
+      SET name = ?, description = ?, price = ?, icon = ?, sort_order = ?, is_active = ?
+      WHERE id = ?
+    `).run(name, description, price, icon, sort_order, is_active ? 1 : 0, id);
+
+    const product = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
+    res.json(product);
+  } catch (error) {
+    console.error('Update product error:', error);
+    res.status(500).json({ error: 'Failed to update product' });
+  }
+});
+
+// Delete product (admin only)
+app.delete('/api/admin/products/:id', adminAuthMiddleware, (req, res) => {
+  try {
+    const { id } = req.params;
+    db.prepare('DELETE FROM products WHERE id = ?').run(id);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Delete product error:', error);
+    res.status(500).json({ error: 'Failed to delete product' });
+  }
+});
+
+// ==================== INVOICES ====================
+
+// Create invoice (admin only)
+app.post('/api/admin/invoices', adminAuthMiddleware, (req, res) => {
+  try {
+    const { order_id, user_id, amount, promo_code, discount_amount } = req.body;
+
+    const invoiceId = 'INV' + Date.now();
+    const finalAmount = amount - (discount_amount || 0);
+    const paymentAddress = process.env.PAYMENT_ADDRESS || 'TAXtuQh2zJHks5yZQ2zzVdEFExs7ktoYuV';
+
+    // Create invoice
+    db.prepare(`
+      INSERT INTO invoices (id, order_id, user_id, amount, promo_code, discount_amount, final_amount, payment_address, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'awaiting_payment')
+    `).run(invoiceId, order_id, user_id, amount, promo_code || null, discount_amount || 0, finalAmount, paymentAddress);
+
+    // Update order status to awaiting_payment
+    db.prepare('UPDATE orders SET status = ? WHERE id = ?').run('awaiting_payment', order_id);
+
+    // Get user info
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(user_id);
+
+    // Send notification to user
+    db.prepare(`
+      INSERT INTO notifications (user_id, title, message)
+      VALUES (?, ?, ?)
+    `).run(user_id, '💳 Счет выставлен', `Счет #${invoiceId} на сумму $${finalAmount.toFixed(2)}. Перейдите в приложение для оплаты.`);
+
+    // Send Telegram notification with link
+    if (user && user.telegram_id) {
+      const miniAppUrl = `https://t.me/${process.env.BOT_USERNAME}/${process.env.MINI_APP_NAME || 'app'}?startapp=invoice_${invoiceId}`;
+      bot.telegram.sendMessage(
+        user.telegram_id,
+        `💳 *Счет выставлен*\n\n` +
+        `Номер счета: #${invoiceId}\n` +
+        `Сумма к оплате: $${finalAmount.toFixed(2)}\n` +
+        `${promo_code ? `Промокод: ${promo_code} (-$${discount_amount.toFixed(2)})\n` : ''}\n` +
+        `Нажмите кнопку ниже для оплаты:`,
+        {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '💳 Оплатить', web_app: { url: `${miniAppUrl}` } }
+            ]]
+          }
+        }
+      ).catch(err => console.error('Error sending invoice notification:', err));
+    }
+
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(invoiceId);
+    res.json(invoice);
+  } catch (error) {
+    console.error('Create invoice error:', error);
+    res.status(500).json({ error: 'Failed to create invoice' });
+  }
+});
+
+// Get invoice by ID
+app.get('/api/invoices/:id', authMiddleware, (req, res) => {
+  try {
+    const { id } = req.params;
+    const invoice = db.prepare(`
+      SELECT i.*, o.items, o.comment, u.name as user_name
+      FROM invoices i
+      LEFT JOIN orders o ON i.order_id = o.id
+      LEFT JOIN users u ON i.user_id = u.id
+      WHERE i.id = ?
+    `).get(id);
+
+    if (!invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    res.json({
+      ...invoice,
+      items: JSON.parse(invoice.items || '[]')
+    });
+  } catch (error) {
+    console.error('Get invoice error:', error);
+    res.status(500).json({ error: 'Failed to get invoice' });
+  }
+});
+
+// Verify invoice payment
+app.post('/api/invoices/:id/verify', authMiddleware, (req, res) => {
+  try {
+    const { id } = req.params;
+    const { tx_hash } = req.body;
+
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(id);
+    if (!invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    // Update invoice with tx_hash
+    db.prepare('UPDATE invoices SET tx_hash = ? WHERE id = ?').run(tx_hash, id);
+
+    // Return invoice for verification (will be verified via TronScan in the client)
+    res.json({ success: true, invoice: { ...invoice, tx_hash } });
+  } catch (error) {
+    console.error('Verify invoice error:', error);
+    res.status(500).json({ error: 'Failed to verify invoice' });
+  }
+});
+
+// Confirm invoice payment (after TronScan verification)
+app.post('/api/invoices/:id/confirm', authMiddleware, (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const invoice = db.prepare('SELECT * FROM invoices WHERE id = ?').get(id);
+    if (!invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    // Update invoice status
+    db.prepare('UPDATE invoices SET status = ?, paid_at = CURRENT_TIMESTAMP WHERE id = ?').run('paid', id);
+
+    // Update order status to working
+    db.prepare('UPDATE orders SET status = ?, tx_hash = ? WHERE id = ?').run('working', invoice.tx_hash, invoice.order_id);
+
+    // Send notification to user
+    db.prepare(`
+      INSERT INTO notifications (user_id, title, message)
+      VALUES (?, ?, ?)
+    `).run(invoice.user_id, '✅ Оплата подтверждена', `Счет #${id} оплачен. Заказ принят в работу!`);
+
+    // Notify admin
+    notifyAdmin(
+      `✅ Оплата подтверждена\n\n` +
+      `Счет: #${id}\n` +
+      `Заказ: #${invoice.order_id}\n` +
+      `Сумма: $${invoice.final_amount}\n` +
+      `TxHash: ${invoice.tx_hash}`
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Confirm invoice error:', error);
+    res.status(500).json({ error: 'Failed to confirm invoice' });
+  }
+});
+
+// Get all invoices (admin only)
+app.get('/api/admin/invoices', adminAuthMiddleware, (req, res) => {
+  try {
+    const invoices = db.prepare(`
+      SELECT i.*, u.name as user_name, u.username, o.id as order_number
+      FROM invoices i
+      LEFT JOIN users u ON i.user_id = u.id
+      LEFT JOIN orders o ON i.order_id = o.id
+      ORDER BY i.created_at DESC
+    `).all();
+    res.json(invoices);
+  } catch (error) {
+    console.error('Get invoices error:', error);
+    res.status(500).json({ error: 'Failed to get invoices' });
   }
 });
 

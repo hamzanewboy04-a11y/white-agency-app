@@ -398,12 +398,6 @@
                 </svg>
                 <span class="text-[10px] font-medium">Главная</span>
             </button>
-            <button onclick="showOrderForm()" class="flex flex-col items-center gap-0.5 text-gray-400">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-                </svg>
-                <span class="text-[10px] font-medium">Заказать</span>
-            </button>
             <button onclick="showReferral()" class="flex flex-col items-center gap-0.5 text-gray-400">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
@@ -884,6 +878,15 @@
         </div>
     </div>
 
+    <!-- Invoice Modal -->
+    <div id="invoiceModal" class="fixed bottom-0 left-0 right-0 rounded-t-3xl z-50 hidden max-h-[90vh] overflow-y-auto" style="background: var(--tg-theme-bg-color);">
+        <div class="p-6">
+            <div class="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
+            <h2 class="text-xl font-bold text-center mb-6">💳 Счет на оплату</h2>
+            <div id="invoiceContent"></div>
+        </div>
+    </div>
+
     <!-- Toast -->
     <div id="toast" class="fixed top-20 left-1/2 -translate-x-1/2 bg-black text-white px-6 py-3 rounded-full text-sm font-medium shadow-lg z-[100] hidden">
         <span id="toastMessage">Скопировано!</span>
@@ -925,6 +928,7 @@
             tgUser: null,
             isLoading: true,
             appSettings: null,
+            products: [], // Products from API
             cart: [] // {productId, name, price, quantity}
         };
 
@@ -1058,6 +1062,52 @@
             } catch (error) {
                 console.error('Failed to load app settings:', error);
                 // Use default CONFIG.PRICES if API fails
+            }
+        }
+
+        async function loadProducts() {
+            try {
+                if (CONFIG.API_URL) {
+                    const products = await apiRequest('/api/products');
+                    if (products && products.length > 0) {
+                        state.products = products.map(p => ({
+                            id: p.id,
+                            name: p.name,
+                            desc: p.description || '',
+                            price: p.price,
+                            icon: p.icon || '🎨'
+                        }));
+                        console.log('Products loaded from server:', state.products.length);
+                    } else {
+                        // Use CONFIG.PRICES as fallback
+                        state.products = CONFIG.PRICES.map((p, i) => ({
+                            id: i,
+                            name: p.name,
+                            desc: p.desc,
+                            price: p.price,
+                            icon: ['🎨', '🎬', '🎥', '🗣️', '🤖', '📹', '✨', '💻'][i] || '🎨'
+                        }));
+                    }
+                } else {
+                    // No API, use CONFIG.PRICES
+                    state.products = CONFIG.PRICES.map((p, i) => ({
+                        id: i,
+                        name: p.name,
+                        desc: p.desc,
+                        price: p.price,
+                        icon: ['🎨', '🎬', '🎥', '🗣️', '🤖', '📹', '✨', '💻'][i] || '🎨'
+                    }));
+                }
+            } catch (error) {
+                console.error('Failed to load products:', error);
+                // Use CONFIG.PRICES as fallback
+                state.products = CONFIG.PRICES.map((p, i) => ({
+                    id: i,
+                    name: p.name,
+                    desc: p.desc,
+                    price: p.price,
+                    icon: ['🎨', '🎬', '🎥', '🗣️', '🤖', '📹', '✨', '💻'][i] || '🎨'
+                }));
             }
         }
 
@@ -1856,10 +1906,11 @@
         async function init() {
             initTelegram();
 
-            // Load user data and app settings in parallel
+            // Load user data, app settings, and products in parallel
             await Promise.all([
                 loadUserData(),
-                loadAppSettings()
+                loadAppSettings(),
+                loadProducts()
             ]);
 
             // Render catalog
@@ -1880,24 +1931,27 @@
 
         function renderCatalog() {
             const container = document.getElementById('catalogProducts');
-            const products = CONFIG.PRICES;
+            const products = state.products.length > 0 ? state.products : CONFIG.PRICES.map((p, i) => ({
+                id: i,
+                name: p.name,
+                desc: p.desc,
+                price: p.price,
+                icon: ['🎨', '🎬', '🎥', '🗣️', '🤖', '📹', '✨', '💻'][i] || '🎨'
+            }));
 
             container.innerHTML = products.map((product, index) => {
-                const icons = ['🎨', '🎬', '🎥', '🗣️', '🤖', '📹', '✨', '💻'];
-                const icon = icons[index] || '🎨';
-
                 return `
                     <div class="card rounded-2xl p-4 hover:shadow-lg transition-shadow">
                         <div class="flex gap-4">
                             <div class="w-16 h-16 bg-gradient-to-br from-gray-800 to-black rounded-xl flex items-center justify-center text-3xl flex-shrink-0">
-                                ${icon}
+                                ${product.icon}
                             </div>
                             <div class="flex-1">
                                 <h3 class="font-semibold text-base mb-1">${product.name}</h3>
                                 <p class="text-xs text-gray-500 mb-2">${product.desc}</p>
                                 <div class="flex items-center justify-between">
                                     <span class="text-2xl font-bold">$${product.price}</span>
-                                    <button onclick="addToCart(${index})" class="px-4 py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors">
+                                    <button onclick="addToCart(${product.id})" class="px-4 py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors">
                                         + В корзину
                                     </button>
                                 </div>
@@ -1908,15 +1962,17 @@
             }).join('');
         }
 
-        function addToCart(productIndex) {
-            const product = CONFIG.PRICES[productIndex];
-            const existingItem = state.cart.find(item => item.productId === productIndex);
+        function addToCart(productId) {
+            const product = state.products.find(p => p.id === productId);
+            if (!product) return;
+
+            const existingItem = state.cart.find(item => item.productId === productId);
 
             if (existingItem) {
                 existingItem.quantity++;
             } else {
                 state.cart.push({
-                    productId: productIndex,
+                    productId: productId,
                     name: product.name,
                     desc: product.desc,
                     price: product.price,
@@ -2274,11 +2330,182 @@
             
             closeModal();
             showToast('✅ Заказ оформлен! Ожидайте подтверждения оплаты');
-            
+
             if (tg) tg.HapticFeedback.notificationOccurred('success');
         }
 
+        // ==================== INVOICE FUNCTIONS ====================
+
+        async function showInvoice(invoiceId) {
+            try {
+                const invoice = await apiRequest(`/api/invoices/${invoiceId}`);
+                if (!invoice) {
+                    showToast('❌ Инвойс не найден');
+                    return;
+                }
+
+                const items = invoice.items || [];
+                const itemsList = items.length > 0
+                    ? items.map(item => `<div class="flex justify-between text-sm">
+                        <span>${item.name} x${item.quantity}</span>
+                        <span>$${item.total}</span>
+                    </div>`).join('')
+                    : '<div class="text-sm text-gray-500">Информация о заказе недоступна</div>';
+
+                document.getElementById('invoiceContent').innerHTML = `
+                    <div class="space-y-4">
+                        <div class="text-center mb-4">
+                            <div class="text-gray-500 text-sm">Номер счета</div>
+                            <div class="font-mono text-lg">#${invoice.id}</div>
+                        </div>
+
+                        <div class="card rounded-xl p-4">
+                            <div class="text-xs text-gray-500 mb-2">Детали заказа</div>
+                            ${itemsList}
+                            ${invoice.comment ? `<div class="text-xs text-gray-500 mt-2">${invoice.comment}</div>` : ''}
+                        </div>
+
+                        <div class="card rounded-xl p-4">
+                            <div class="flex justify-between mb-2">
+                                <span class="text-gray-500">Сумма:</span>
+                                <span>$${invoice.amount}</span>
+                            </div>
+                            ${invoice.promo_code ? `
+                            <div class="flex justify-between mb-2 text-green-600">
+                                <span>Промокод ${invoice.promo_code}:</span>
+                                <span>-$${invoice.discount_amount}</span>
+                            </div>
+                            ` : ''}
+                            <div class="flex justify-between font-bold text-lg border-t pt-2">
+                                <span>Итого:</span>
+                                <span>$${invoice.final_amount}</span>
+                            </div>
+                        </div>
+
+                        ${invoice.status === 'awaiting_payment' ? `
+                        <div class="card rounded-xl p-4">
+                            <div class="text-xs text-gray-500 mb-2">Адрес для оплаты (TRC-20 USDT)</div>
+                            <div class="flex gap-2">
+                                <input type="text" readonly value="${invoice.payment_address}"
+                                    class="flex-1 bg-gray-100 rounded-lg px-3 py-2 text-sm font-mono">
+                                <button onclick="navigator.clipboard.writeText('${invoice.payment_address}'); showToast('Адрес скопирован')"
+                                    class="btn-primary px-4 py-2 rounded-lg">
+                                    📋
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="card rounded-xl p-4">
+                            <div class="text-xs text-gray-500 mb-2">Хеш транзакции (TxHash)</div>
+                            <input type="text" id="invoiceTxHash" placeholder="Вставьте хеш TRC-20 транзакции"
+                                class="w-full bg-gray-100 rounded-lg px-3 py-3 text-sm font-mono mb-3">
+                            <button onclick="verifyInvoicePayment('${invoice.id}')"
+                                class="w-full btn-primary py-3 rounded-xl font-semibold">
+                                ✅ Проверить оплату
+                            </button>
+                        </div>
+                        ` : ''}
+
+                        ${invoice.status === 'paid' ? `
+                        <div class="card rounded-xl p-4 bg-green-50 text-center">
+                            <div class="text-4xl mb-2">✅</div>
+                            <div class="font-semibold text-green-700">Оплата подтверждена!</div>
+                            <div class="text-sm text-green-600 mt-1">Заказ принят в работу</div>
+                        </div>
+                        ` : ''}
+                    </div>
+                `;
+
+                showModal('invoiceModal');
+            } catch (error) {
+                console.error('Error loading invoice:', error);
+                showToast('❌ Ошибка загрузки инвойса');
+            }
+        }
+
+        async function verifyInvoicePayment(invoiceId) {
+            const txHash = document.getElementById('invoiceTxHash').value.trim();
+
+            if (!txHash) {
+                showToast('❌ Введите хеш транзакции');
+                return;
+            }
+
+            if (txHash.length < 10) {
+                showToast('❌ Слишком короткий хеш');
+                return;
+            }
+
+            // Validate TRC20 hash format
+            const trc20HashPattern = /^[a-fA-F0-9]{64}$/;
+            if (!trc20HashPattern.test(txHash)) {
+                showToast('⚠️ Формат не соответствует TRC20');
+                return;
+            }
+
+            showToast('🔍 Проверяем транзакцию на TronScan...');
+
+            try {
+                // First, update invoice with tx_hash
+                await apiRequest(`/api/invoices/${invoiceId}/verify`, 'POST', { tx_hash: txHash });
+
+                // Get invoice details for verification
+                const invoice = await apiRequest(`/api/invoices/${invoiceId}`);
+
+                // Verify transaction on TronScan
+                const verification = await apiRequest('/api/verify-tronscan', 'POST', {
+                    txHash: txHash,
+                    expectedAmount: invoice.final_amount,
+                    recipientAddress: invoice.payment_address
+                });
+
+                if (verification && verification.verified) {
+                    // Transaction verified successfully
+                    showToast('✅ Транзакция подтверждена!');
+
+                    // Confirm payment
+                    await apiRequest(`/api/invoices/${invoiceId}/confirm`, 'POST', {});
+
+                    // Reload invoice to show updated status
+                    await showInvoice(invoiceId);
+
+                    // Reload user data to update orders
+                    await loadUserData();
+                } else {
+                    const errorMsg = verification?.error || 'Транзакция не найдена';
+                    showToast('❌ ' + errorMsg);
+
+                    if (confirm(errorMsg + '\n\nОткрыть транзакцию на TronScan для проверки?')) {
+                        const url = `https://tronscan.org/#/transaction/${txHash}`;
+                        if (tg) {
+                            tg.openLink(url);
+                        } else {
+                            window.open(url, '_blank');
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Verification error:', error);
+                showToast('❌ Ошибка проверки. Попробуйте еще раз');
+            }
+        }
+
+        // Handle invoice deep link (from Telegram notification)
+        function handleInvoiceDeepLink() {
+            if (tg && tg.initDataUnsafe?.start_param) {
+                const startParam = tg.initDataUnsafe.start_param;
+                if (startParam.startsWith('invoice_')) {
+                    const invoiceId = startParam.replace('invoice_', '');
+                    // Show invoice after app loads
+                    setTimeout(() => {
+                        showInvoice(invoiceId);
+                    }, 1000);
+                }
+            }
+        }
+
         init();
+        handleInvoiceDeepLink();
     </script>
 </body>
 </html>
