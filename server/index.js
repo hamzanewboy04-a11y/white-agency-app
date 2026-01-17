@@ -162,6 +162,11 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Root redirect to admin
+app.get('/', (req, res) => {
+  res.redirect('/admin');
+});
+
 // Admin panel route
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
