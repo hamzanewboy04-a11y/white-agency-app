@@ -24,6 +24,8 @@
     .nav-btn { transition: all 0.2s ease; }
     .nav-btn:hover { background: rgba(255,255,255,0.1); }
     .nav-btn.active { background: #fff; color: #000; }
+    .spinner { border: 2px solid rgba(255,255,255,0.1); border-top-color: #fff; border-radius: 50%; width: 16px; height: 16px; animation: spin 0.8s linear infinite; display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body class="bg-black text-white min-h-screen">
@@ -38,8 +40,8 @@
       
       <div class="space-y-4">
         <div>
-          <label class="block text-sm text-gray-500 mb-2">API URL</label>
-          <input type="text" id="apiUrl" placeholder="https://your-api.railway.app" 
+          <label class="block text-sm text-gray-500 mb-2">API URL <span class="text-gray-600">(оставьте пустым если на том же сервере)</span></label>
+          <input type="text" id="apiUrl" placeholder="https://your-api.railway.app или пусто" 
             class="w-full bg-gray-900/50 border border-gray-800 rounded-xl px-4 py-3 focus:outline-none focus:border-white transition">
         </div>
         <div>
@@ -47,11 +49,16 @@
           <input type="password" id="adminKey" placeholder="Ваш ADMIN_KEY из .env" 
             class="w-full bg-gray-900/50 border border-gray-800 rounded-xl px-4 py-3 focus:outline-none focus:border-white transition">
         </div>
-        <button onclick="login()" 
-          class="w-full bg-white text-black hover:bg-gray-200 py-3 rounded-xl font-semibold transition">
-          Войти
+        <button onclick="login()" id="loginBtn"
+          class="w-full bg-white text-black hover:bg-gray-200 py-3 rounded-xl font-semibold transition flex items-center justify-center gap-2">
+          <span>Войти</span>
         </button>
-        <p id="loginError" class="text-red-400 text-center text-sm hidden"></p>
+        <div id="loginError" class="text-red-400 text-center text-sm hidden p-3 bg-red-500/10 rounded-lg"></div>
+        <div id="loginInfo" class="text-gray-500 text-center text-xs hidden"></div>
+      </div>
+      
+      <div class="mt-6 text-center text-gray-600 text-xs">
+        <p>Подсказка: ADMIN_KEY задаётся в .env файле сервера</p>
       </div>
     </div>
   </div>
@@ -68,10 +75,10 @@
         </div>
         <div class="flex items-center gap-4">
           <div id="connectionStatus" class="flex items-center gap-2 text-xs">
-            <span class="w-2 h-2 bg-white rounded-full"></span>
+            <span class="w-2 h-2 bg-green-500 rounded-full"></span>
             <span class="text-gray-500">Подключено</span>
           </div>
-          <button onclick="logout()" class="text-gray-500 hover:text-white transition">
+          <button onclick="logout()" class="text-gray-500 hover:text-white transition" title="Выйти">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
             </svg>
@@ -89,19 +96,19 @@
         </div>
         <div class="glass rounded-xl p-4 stat-card cursor-default">
           <div class="text-gray-500 text-xs mb-1">Ожидают</div>
-          <div class="text-2xl font-bold text-gray-400" id="statPending">—</div>
+          <div class="text-2xl font-bold text-yellow-400" id="statPending">—</div>
         </div>
         <div class="glass rounded-xl p-4 stat-card cursor-default">
           <div class="text-gray-500 text-xs mb-1">В работе</div>
-          <div class="text-2xl font-bold text-gray-300" id="statWorking">—</div>
+          <div class="text-2xl font-bold text-blue-400" id="statWorking">—</div>
         </div>
         <div class="glass rounded-xl p-4 stat-card cursor-default">
           <div class="text-gray-500 text-xs mb-1">Пользователей</div>
-          <div class="text-2xl font-bold text-gray-400" id="statUsers">—</div>
+          <div class="text-2xl font-bold text-purple-400" id="statUsers">—</div>
         </div>
         <div class="glass rounded-xl p-4 stat-card cursor-default">
           <div class="text-gray-500 text-xs mb-1">Доход</div>
-          <div class="text-2xl font-bold text-white" id="statRevenue">—</div>
+          <div class="text-2xl font-bold text-green-400" id="statRevenue">—</div>
         </div>
       </div>
     </div>
@@ -221,13 +228,6 @@
             </button>
           </div>
         </div>
-
-        <div class="glass rounded-xl p-6">
-          <h3 class="font-medium mb-4 text-gray-400 text-sm uppercase tracking-wide">История уведомлений</h3>
-          <div id="notificationsHistory" class="space-y-3">
-            <div class="text-center text-gray-500 py-4">История уведомлений будет здесь</div>
-          </div>
-        </div>
       </div>
 
       <!-- Settings Tab -->
@@ -271,7 +271,7 @@
             <h3 class="font-medium mb-4 text-gray-400 text-sm uppercase tracking-wide">Информация</h3>
             <div class="bg-gray-900/50 rounded-lg p-4 text-sm text-gray-400">
               <p class="mb-2">✅ Админ-панель успешно подключена к серверу</p>
-              <p class="mb-2">📊 Все эндпоинты уже добавлены в server.js</p>
+              <p class="mb-2">📊 API URL: <code id="currentApiUrl" class="text-gray-300"></code></p>
               <p>🔔 Уведомления отправляются в Telegram автоматически</p>
             </div>
           </div>
@@ -306,43 +306,114 @@
 
     // Initialize
     document.addEventListener('DOMContentLoaded', () => {
-      if (apiUrl && adminKey) {
-        document.getElementById('apiUrl').value = apiUrl;
+      // Pre-fill saved values
+      if (apiUrl) document.getElementById('apiUrl').value = apiUrl;
+      if (adminKey) {
         document.getElementById('adminKey').value = adminKey;
-        login();
+        login(); // Auto-login
       }
     });
 
     // Auth
     async function login() {
-      const url = document.getElementById('apiUrl').value.trim().replace(/\/$/, '');
+      const urlInput = document.getElementById('apiUrl').value.trim().replace(/\/$/, '');
       const key = document.getElementById('adminKey').value.trim();
       
-      if (!url || !key) {
-        showError('Заполните все поля');
+      if (!key) {
+        showError('Введите Admin Key');
         return;
       }
       
-      apiUrl = url;
-      adminKey = key;
+      // Use current origin if URL is empty (same-server deployment)
+      const effectiveUrl = urlInput || window.location.origin;
+      
+      const loginBtn = document.getElementById('loginBtn');
+      const loginInfo = document.getElementById('loginInfo');
+      
+      // Show loading state
+      loginBtn.disabled = true;
+      loginBtn.innerHTML = '<span class="spinner"></span><span>Подключение...</span>';
+      loginInfo.textContent = `Подключение к ${effectiveUrl}...`;
+      loginInfo.classList.remove('hidden');
+      hideError();
       
       try {
-        const response = await fetch(`${apiUrl}/health`);
-        if (!response.ok) throw new Error('Server not responding');
+        // First, try health check
+        let serverReachable = false;
+        try {
+          const healthResponse = await fetchWithTimeout(`${effectiveUrl}/health`, {}, 5000);
+          serverReachable = healthResponse.ok;
+          if (serverReachable) {
+            loginInfo.textContent = 'Сервер доступен, проверка ключа...';
+          }
+        } catch (e) {
+          console.log('Health check failed:', e.message);
+          loginInfo.textContent = 'Проверка авторизации...';
+        }
         
-        localStorage.setItem('apiUrl', apiUrl);
+        // Try to authenticate with admin endpoint
+        const response = await fetchWithTimeout(`${effectiveUrl}/api/admin/stats`, {
+          method: 'GET',
+          headers: {
+            'X-Admin-Key': key,
+            'Content-Type': 'application/json'
+          }
+        }, 10000);
+        
+        if (response.status === 401) {
+          showError('Неверный Admin Key');
+          return;
+        }
+        
+        if (!response.ok) {
+          showError(`Ошибка сервера: ${response.status} ${response.statusText}`);
+          return;
+        }
+        
+        // Success! Save credentials
+        apiUrl = effectiveUrl;
+        adminKey = key;
+        localStorage.setItem('apiUrl', urlInput); // Save original input
         localStorage.setItem('adminKey', adminKey);
         
+        // Show admin panel
         document.getElementById('loginScreen').classList.add('hidden');
         document.getElementById('adminPanel').classList.remove('hidden');
         
-        document.getElementById('settingsApiUrl').value = apiUrl;
+        // Update settings fields
+        document.getElementById('settingsApiUrl').value = effectiveUrl;
         document.getElementById('settingsAdminKey').value = adminKey;
+        document.getElementById('currentApiUrl').textContent = effectiveUrl;
         
+        // Load all data
         refreshAllData();
+        
       } catch (error) {
-        showError('Не удалось подключиться: ' + error.message);
+        console.error('Login error:', error);
+        
+        // Provide helpful error messages
+        if (error.name === 'AbortError') {
+          showError('Таймаут подключения. Сервер не отвечает.\n\nПроверьте:\n• Запущен ли сервер (node server.js)\n• Правильный ли URL: ' + effectiveUrl);
+        } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('fetch')) {
+          showError(`Не удалось подключиться к серверу.\n\nПроверьте:\n• Запущен ли сервер\n• URL: ${effectiveUrl}\n• Нет ли CORS ошибок в консоли`);
+        } else {
+          showError('Ошибка: ' + error.message);
+        }
+      } finally {
+        loginBtn.disabled = false;
+        loginBtn.innerHTML = '<span>Войти</span>';
+        loginInfo.classList.add('hidden');
       }
+    }
+
+    // Fetch with timeout helper
+    function fetchWithTimeout(url, options = {}, timeout = 10000) {
+      return Promise.race([
+        fetch(url, options),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('AbortError')), timeout)
+        )
+      ]);
     }
 
     function logout() {
@@ -353,9 +424,12 @@
 
     function showError(msg) {
       const el = document.getElementById('loginError');
-      el.textContent = msg;
+      el.innerHTML = msg.replace(/\n/g, '<br>');
       el.classList.remove('hidden');
-      setTimeout(() => el.classList.add('hidden'), 3000);
+    }
+
+    function hideError() {
+      document.getElementById('loginError').classList.add('hidden');
     }
 
     // API Calls
@@ -535,7 +609,7 @@
             <div class="text-xs text-gray-600 mt-1">${r.trc20_wallet || 'Кошелёк не указан'}</div>
           </div>
           <div class="text-right">
-            <div class="text-lg font-medium">$${r.earnings.toFixed(2)}</div>
+            <div class="text-lg font-medium text-green-400">$${r.earnings.toFixed(2)}</div>
             <button onclick="markAsPaid(${r.id})" class="text-xs bg-gray-800 hover:bg-gray-700 px-2 py-1 rounded mt-1 transition">
               Выплачено
             </button>
@@ -605,7 +679,7 @@
             </div>
             <div class="bg-gray-900/50 rounded-lg p-3">
               <div class="text-xs text-gray-600 mb-1 uppercase tracking-wide">Сумма</div>
-              <div class="font-medium text-xl">$${order.total}</div>
+              <div class="font-medium text-xl text-green-400">$${order.total}</div>
             </div>
           </div>
           
@@ -810,10 +884,16 @@
     }
 
     function saveSettings() {
-      apiUrl = document.getElementById('settingsApiUrl').value.trim().replace(/\/$/, '');
-      adminKey = document.getElementById('settingsAdminKey').value.trim();
-      localStorage.setItem('apiUrl', apiUrl);
-      localStorage.setItem('adminKey', adminKey);
+      const newUrl = document.getElementById('settingsApiUrl').value.trim().replace(/\/$/, '');
+      const newKey = document.getElementById('settingsAdminKey').value.trim();
+      
+      apiUrl = newUrl || window.location.origin;
+      adminKey = newKey;
+      
+      localStorage.setItem('apiUrl', newUrl);
+      localStorage.setItem('adminKey', newKey);
+      
+      document.getElementById('currentApiUrl').textContent = apiUrl;
       showToast('Настройки сохранены', 'success');
     }
 
@@ -834,7 +914,7 @@
         bronze: 'text-orange-400',
         silver: 'text-gray-300',
         gold: 'text-yellow-400',
-        platinum: 'text-white'
+        platinum: 'text-cyan-300'
       };
       return colors[level] || 'text-gray-500';
     }
@@ -853,10 +933,10 @@
     function showToast(message, type = 'info') {
       const container = document.getElementById('toastContainer');
       const colors = {
-        success: 'bg-white text-black',
+        success: 'bg-green-600 text-white',
         error: 'bg-red-600 text-white',
-        warning: 'bg-gray-700 text-white',
-        info: 'bg-gray-600 text-white'
+        warning: 'bg-yellow-600 text-black',
+        info: 'bg-gray-700 text-white'
       };
       
       const toast = document.createElement('div');
@@ -874,6 +954,11 @@
       if (e.target.id === 'orderModal') {
         closeOrderModal();
       }
+    });
+
+    // Close on Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeOrderModal();
     });
 
     // Auto-refresh every 30 seconds
