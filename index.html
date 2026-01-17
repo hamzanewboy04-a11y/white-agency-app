@@ -7,6 +7,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
     <style>
         * {
             font-family: 'Inter', sans-serif;
@@ -33,7 +34,28 @@
         body.dark {
             --tg-theme-bg-color: #1a1a1a;
             --tg-theme-text-color: #ffffff;
+            --tg-theme-hint-color: #999999;
+            --tg-theme-link-color: #64b5f6;
+            --tg-theme-button-color: #ffffff;
+            --tg-theme-button-text-color: #000000;
             --tg-theme-secondary-bg-color: #2a2a2a;
+        }
+
+        body.dark .card {
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        body.dark input,
+        body.dark textarea,
+        body.dark select {
+            background: #2a2a2a;
+            color: #ffffff;
+            border-color: rgba(255,255,255,0.2);
+        }
+
+        body.dark input::placeholder,
+        body.dark textarea::placeholder {
+            color: #888888;
         }
         
         .card {
@@ -403,7 +425,17 @@
                 <label class="text-sm font-medium text-gray-700 mb-2 block">Референсы (ссылки)</label>
                 <input type="text" id="orderRefs" class="w-full px-4 py-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-black" placeholder="Ссылка на пример">
             </div>
-            
+
+            <div>
+                <label class="text-sm font-medium text-gray-700 mb-2 block">Медиа-файлы (опционально)</label>
+                <div class="space-y-2">
+                    <input type="text" id="orderMediaLinks" class="w-full px-4 py-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-black" placeholder="Ссылки на файлы (Google Drive, Dropbox и т.д.)">
+                    <div class="text-xs text-gray-500">
+                        📎 Вставьте ссылки на медиа-файлы через запятую
+                    </div>
+                </div>
+            </div>
+
             <!-- Order Summary -->
             <div class="card rounded-xl p-4 space-y-3">
                 <div class="flex justify-between items-center">
@@ -782,6 +814,24 @@
         // ==================== TELEGRAM WEBAPP ====================
         const tg = window.Telegram?.WebApp;
 
+        // ==================== TON CONNECT ====================
+        let tonConnectUI = null;
+        const TON_ADDRESS = 'UQDqWKqWEE4h8D2bGNXGYjPzYfYJfCO3q_K8a_8KxvKGcxiK'; // Replace with your TON wallet address
+
+        function initTonConnect() {
+            try {
+                if (typeof TON_CONNECT_UI !== 'undefined') {
+                    tonConnectUI = new TON_CONNECT_UI.TonConnectUI({
+                        manifestUrl: 'https://white-agency-app.vercel.app/tonconnect-manifest.json',
+                        buttonRootId: 'ton-connect-button'
+                    });
+                    console.log('TON Connect initialized');
+                }
+            } catch (error) {
+                console.error('Failed to initialize TON Connect:', error);
+            }
+        }
+
         function initTelegram() {
             if (!tg) {
                 console.warn('Telegram WebApp not available');
@@ -1128,17 +1178,21 @@
             renderCashbackHistory();
         }
         async function showNotifications() {
-            showModal('notifModal');
-            renderNotifications();
-            state.user.notifications.forEach(n => n.read = true);
-            document.getElementById('notifDot').style.display = 'none';
+            try {
+                showModal('notifModal');
+                renderNotifications();
+                state.user.notifications.forEach(n => n.read = true);
+                document.getElementById('notifDot').style.display = 'none';
 
-            // Mark as read on server
-            if (CONFIG.API_URL) {
-                await apiRequest('/api/notifications/read', 'POST');
+                // Mark as read on server
+                if (CONFIG.API_URL) {
+                    await apiRequest('/api/notifications/read', 'POST');
+                }
+
+                saveUserData();
+            } catch (error) {
+                console.error('Error showing notifications:', error);
             }
-
-            saveUserData();
         }
 
         function showChat() {
@@ -1274,6 +1328,7 @@
                 formats: selectedFormats.length > 0 ? selectedFormats : ['Не указано'],
                 description: document.getElementById('orderDescription').value,
                 refs: document.getElementById('orderRefs').value,
+                mediaLinks: document.getElementById('orderMediaLinks').value,
                 basePrice,
                 discount: discountAmount,
                 cashbackUsed,
@@ -1330,44 +1385,49 @@
             const orderId = document.getElementById('reviewOrderId').value;
             const reviewText = document.getElementById('reviewText').value;
 
-            // Send to server
-            if (CONFIG.API_URL) {
-                const result = await apiRequest('/api/reviews', 'POST', {
-                    orderId: orderId,
-                    rating: currentRating,
-                    text: reviewText
-                });
-                if (result && result.success) {
-                    showToast('✅ Отзыв отправлен! +$' + (result.bonus || CONFIG.REVIEW_BONUS) + ' кешбэка');
-                    // Reload user data to get updated cashback
-                    await loadUserData();
-                } else {
-                    showToast('⚠️ Не удалось отправить отзыв на сервер');
+            try {
+                // Send to server
+                if (CONFIG.API_URL) {
+                    const result = await apiRequest('/api/reviews', 'POST', {
+                        orderId: orderId,
+                        rating: currentRating,
+                        text: reviewText
+                    });
+                    if (result && result.success) {
+                        showToast('✅ Отзыв отправлен! +$' + (result.bonus || CONFIG.REVIEW_BONUS) + ' кешбэка');
+                        // Reload user data to get updated cashback
+                        await loadUserData();
+                    } else {
+                        showToast('⚠️ Не удалось отправить отзыв на сервер');
+                    }
                 }
+
+                const order = state.user.orders.find(o => o.id === orderId);
+                if (order) order.reviewed = true;
+
+                state.user.cashback += CONFIG.REVIEW_BONUS;
+                state.user.cashbackHistory.push({
+                    amount: CONFIG.REVIEW_BONUS,
+                    description: 'Бонус за отзыв',
+                    date: new Date().toISOString()
+                });
+
+                saveUserData();
+                updateUI();
+
+                currentRating = 0;
+                document.querySelectorAll('.rating-star').forEach(star => {
+                    star.classList.add('text-gray-300');
+                    star.classList.remove('text-yellow-400');
+                });
+                document.getElementById('reviewText').value = '';
+                document.getElementById('reviewOrderId').value = '';
+
+                closeModal();
+            } catch (error) {
+                console.error('Error submitting review:', error);
+                showToast('❌ Ошибка при отправке отзыва');
             }
-
-            const order = state.user.orders.find(o => o.id === orderId);
-            if (order) order.reviewed = true;
-
-            state.user.cashback += CONFIG.REVIEW_BONUS;
-            state.user.cashbackHistory.push({
-                amount: CONFIG.REVIEW_BONUS,
-                description: 'Бонус за отзыв',
-                date: new Date().toISOString()
-            });
-
-            saveUserData();
-            updateUI();
-
-            currentRating = 0;
-            document.querySelectorAll('.rating-star').forEach(star => {
-                star.classList.add('text-gray-300');
-                star.classList.remove('text-yellow-400');
-            });
-            document.getElementById('reviewText').value = '';
-            document.getElementById('reviewOrderId').value = '';
-
-            closeModal();
             showToast(`⭐ Спасибо за отзыв! +$${CONFIG.REVIEW_BONUS} на кешбэк`);
             
             if (tg) tg.HapticFeedback.notificationOccurred('success');
@@ -1413,27 +1473,32 @@
             const promo = document.getElementById('promoInput').value.trim();
             if (!promo) return;
 
-            // Send to server
-            if (CONFIG.API_URL) {
-                const result = await apiRequest('/api/referral/apply', 'POST', { code: promo });
-                if (result && result.success) {
-                    showToast('✅ Промокод применён! Скидка ' + (result.discount || 15) + '%');
-                    document.getElementById('promoInput').value = '';
-                    // Reload user data to get updated info
-                    await loadUserData();
-                    if (tg) tg.HapticFeedback.notificationOccurred('success');
-                    return;
-                } else {
-                    showToast('❌ Неверный промокод или он уже использован');
-                    if (tg) tg.HapticFeedback.notificationOccurred('error');
-                    return;
+            try {
+                // Send to server
+                if (CONFIG.API_URL) {
+                    const result = await apiRequest('/api/referral/apply', 'POST', { code: promo });
+                    if (result && result.success) {
+                        showToast('✅ Промокод применён! Скидка ' + (result.discount || 15) + '%');
+                        document.getElementById('promoInput').value = '';
+                        // Reload user data to get updated info
+                        await loadUserData();
+                        if (tg) tg.HapticFeedback.notificationOccurred('success');
+                        return;
+                    } else {
+                        showToast('❌ Неверный промокод или он уже использован');
+                        if (tg) tg.HapticFeedback.notificationOccurred('error');
+                        return;
+                    }
                 }
+
+                showToast('✅ Промокод применён!');
+                document.getElementById('promoInput').value = '';
+
+                if (tg) tg.HapticFeedback.notificationOccurred('success');
+            } catch (error) {
+                console.error('Error applying promo:', error);
+                showToast('❌ Ошибка при применении промокода');
             }
-
-            showToast('✅ Промокод применён!');
-            document.getElementById('promoInput').value = '';
-
-            if (tg) tg.HapticFeedback.notificationOccurred('success');
         }
 
         function copyPromo() {
@@ -1496,8 +1561,9 @@
         // ==================== INIT ====================
         async function init() {
             initTelegram();
+            initTonConnect();
             await loadUserData();
-            
+
             document.getElementById('loadingScreen').style.display = 'none';
             state.isLoading = false;
         }
@@ -1587,70 +1653,85 @@
         
         function confirmUsdtPayment() {
             const txHash = document.getElementById('txHash').value.trim();
-            if (txHash.length < 10) {
-                showToast('❌ Введите корректный хеш');
+
+            // Validate TRC20 transaction hash format (64 hex characters)
+            const trc20HashPattern = /^[a-fA-F0-9]{64}$/;
+
+            if (!txHash) {
+                showToast('❌ Введите хеш транзакции');
                 return;
             }
-            
+
+            if (txHash.length < 10) {
+                showToast('❌ Слишком короткий хеш');
+                return;
+            }
+
+            if (!trc20HashPattern.test(txHash)) {
+                showToast('⚠️ Хеш не соответствует формату TRC20. Проверьте правильность.');
+                // Allow non-standard format but show warning
+            }
+
             completeOrder(txHash);
         }
         
         async function completeOrder(txHash) {
             if (!pendingOrder) return;
 
-            pendingOrder.txHash = txHash;
-            pendingOrder.paymentMethod = currentPaymentMethod;
-            pendingOrder.paymentStatus = 'pending_verification';
+            try {
+                pendingOrder.txHash = txHash;
+                pendingOrder.paymentMethod = currentPaymentMethod;
+                pendingOrder.paymentStatus = 'verifying'; // verifying, paid, processing, completed, cancelled
 
-            // Send order to server first
-            if (CONFIG.API_URL) {
-                const result = await apiRequest('/api/orders', 'POST', pendingOrder);
-                if (result && result.success) {
-                    console.log('Order sent to server successfully');
-                } else {
-                    console.error('Failed to send order to server');
-                    showToast('⚠️ Заказ сохранен локально, но не отправлен на сервер');
+                // Send order to server first
+                if (CONFIG.API_URL) {
+                    const result = await apiRequest('/api/orders', 'POST', pendingOrder);
+                    if (result && result.success) {
+                        console.log('Order sent to server successfully');
+                    } else {
+                        console.error('Failed to send order to server');
+                        showToast('⚠️ Заказ сохранен локально, но не отправлен на сервер');
+                    }
                 }
-            }
 
-            state.user.orders.push(pendingOrder);
-            state.user.totalSpent += pendingOrder.total;
-            state.user.cashback -= pendingOrder.cashbackUsed || 0;
-            state.user.cashback += pendingOrder.cashbackEarned;
+                state.user.orders.push(pendingOrder);
+                state.user.totalSpent += pendingOrder.total;
 
-            if (pendingOrder.cashbackUsed > 0) {
-                state.user.cashbackHistory.push({
-                    amount: -pendingOrder.cashbackUsed,
-                    description: `Оплата заказа #${pendingOrder.id}`,
-                    date: new Date().toISOString()
+                // Only deduct used cashback, DO NOT add earned cashback yet (wait for order completion)
+                state.user.cashback -= pendingOrder.cashbackUsed || 0;
+
+                if (pendingOrder.cashbackUsed > 0) {
+                    state.user.cashbackHistory.push({
+                        amount: -pendingOrder.cashbackUsed,
+                        description: `Оплата заказа #${pendingOrder.id}`,
+                        date: new Date().toISOString()
+                    });
+                }
+
+                updateUserLevel();
+
+                state.user.notifications.push({
+                    title: '📦 Заказ оформлен',
+                    message: `Заказ #${pendingOrder.id} ожидает подтверждения оплаты`,
+                    date: new Date().toISOString(),
+                    read: false
                 });
+
+                saveUserData();
+                updateUI();
+
+                pendingOrder = null;
+                document.getElementById('txHash').value = '';
+                document.getElementById('confirmUsdtBtn').disabled = true;
+
+                closeModal();
+                showToast('✅ Заказ оформлен! Ожидайте подтверждения оплаты');
+
+                if (tg) tg.HapticFeedback.notificationOccurred('success');
+            } catch (error) {
+                console.error('Error completing order:', error);
+                showToast('❌ Ошибка при оформлении заказа');
             }
-            state.user.cashbackHistory.push({
-                amount: pendingOrder.cashbackEarned,
-                description: `Кешбэк за заказ #${pendingOrder.id}`,
-                date: new Date().toISOString()
-            });
-
-            updateUserLevel();
-
-            state.user.notifications.push({
-                title: '📦 Заказ оформлен',
-                message: `Заказ #${pendingOrder.id} ожидает подтверждения оплаты`,
-                date: new Date().toISOString(),
-                read: false
-            });
-
-            saveUserData();
-            updateUI();
-
-            pendingOrder = null;
-            document.getElementById('txHash').value = '';
-            document.getElementById('confirmUsdtBtn').disabled = true;
-
-            closeModal();
-            showToast('✅ Заказ оформлен! Ожидайте подтверждения оплаты');
-
-            if (tg) tg.HapticFeedback.notificationOccurred('success');
         }
 
         init();
