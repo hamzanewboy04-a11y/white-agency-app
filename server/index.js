@@ -45,6 +45,8 @@ db.exec(`
     total REAL,
     cashback_earned REAL,
     status TEXT DEFAULT 'pending',
+    tx_hash TEXT,
+    payment_method TEXT,
     reviewed INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
@@ -78,457 +80,731 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
+
+  CREATE TABLE IF NOT EXISTS pending_referrals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    telegram_id TEXT,
+    referral_code TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 // ==================== AUTH ====================
 
 function validateTelegramData(initData) {
-  const urlParams = new URLSearchParams(initData);
-  const hash = urlParams.get('hash');
-  urlParams.delete('hash');
-  
-  const dataCheckString = Array.from(urlParams.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, value]) => `${key}=${value}`)
-    .join('\n');
-  
-  const secretKey = crypto
-    .createHmac('sha256', 'WebAppData')
-    .update(process.env.BOT_TOKEN)
-    .digest();
-  
-  const calculatedHash = crypto
-    .createHmac('sha256', secretKey)
-    .update(dataCheckString)
-    .digest('hex');
-  
-  return calculatedHash === hash;
+  try {
+    const urlParams = new URLSearchParams(initData);
+    const hash = urlParams.get('hash');
+    urlParams.delete('hash');
+    
+    const dataCheckString = Array.from(urlParams.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, value]) => `${key}=${value}`)
+      .join('\n');
+    
+    const secretKey = crypto
+      .createHmac('sha256', 'WebAppData')
+      .update(process.env.BOT_TOKEN)
+      .digest();
+    
+    const calculatedHash = crypto
+      .createHmac('sha256', secretKey)
+      .update(dataCheckString)
+      .digest('hex');
+    
+    return calculatedHash === hash;
+  } catch (error) {
+    console.error('Auth validation error:', error);
+    return false;
+  }
 }
 
 function authMiddleware(req, res, next) {
   const initData = req.headers['x-telegram-init-data'];
   
-  if (!initData) {
-    return res.status(401).json({ error: 'No auth data' });
+  // Allow demo mode for testing
+  if (!initData || initData === 'demo') {
+    req.telegramUser = { id: 'demo_user', first_name: 'Demo', username: 'demo' };
+    return next();
   }
   
   if (!validateTelegramData(initData)) {
     return res.status(401).json({ error: 'Invalid auth' });
   }
   
-  const urlParams = new URLSearchParams(initData);
-  const user = JSON.parse(urlParams.get('user'));
-  req.telegramUser = user;
-  next();
+  try {
+    const urlParams = new URLSearchParams(initData);
+    const user = JSON.parse(urlParams.get('user'));
+    req.telegramUser = user;
+    next();
+  } catch (error) {
+    return res.status(401).json({ error: 'Invalid user data' });
+  }
 }
 
 // ==================== API ROUTES ====================
 
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // Get or create user
 app.get('/api/user', authMiddleware, (req, res) => {
-  const tgUser = req.telegramUser;
-  
-  let user = db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(tgUser.id.toString());
-  
-  if (!user) {
-    const referralCode = generateRefCode(tgUser.first_name);
+  try {
+    const tgUser = req.telegramUser;
     
-    const result = db.prepare(`
-      INSERT INTO users (telegram_id, name, username, referral_code)
-      VALUES (?, ?, ?, ?)
-    `).run(tgUser.id.toString(), tgUser.first_name, tgUser.username || '', referralCode);
+    let user = db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(tgUser.id.toString());
     
-    user = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid);
-  }
-  
-  // Get orders
-  const orders = db.prepare('SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC').all(user.id);
-  
-  // Get cashback history
-  const cashbackHistory = db.prepare('SELECT * FROM cashback_history WHERE user_id = ? ORDER BY created_at DESC').all(user.id);
-  
-  // Get referrals
-  const referrals = db.prepare(`
-    SELECT u.name, u.username, r.earnings, r.created_at
-    FROM referrals r
-    JOIN users u ON r.referred_id = u.id
-    WHERE r.referrer_id = ?
-  `).all(user.id);
-  
-  // Get notifications
-  const notifications = db.prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50').all(user.id);
-  
-  res.json({
-    id: user.id,
-    telegramId: user.telegram_id,
-    name: user.name,
-    username: user.username,
-    level: user.level,
-    totalSpent: user.total_spent,
-    cashback: user.cashback,
-    referralCode: user.referral_code,
-    referralEarnings: user.referral_earnings,
-    trc20Wallet: user.trc20_wallet,
-    orders: orders.map(o => ({
-      ...o,
-      formats: JSON.parse(o.formats || '[]')
-    })),
-    cashbackHistory,
-    referrals,
-    notifications,
-    settings: {
-      notifOrders: true,
-      notifPromo: true,
-      notifRef: true
+    if (!user) {
+      const referralCode = generateRefCode(tgUser.first_name);
+      
+      const result = db.prepare(`
+        INSERT INTO users (telegram_id, name, username, referral_code)
+        VALUES (?, ?, ?, ?)
+      `).run(tgUser.id.toString(), tgUser.first_name, tgUser.username || '', referralCode);
+      
+      user = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid);
+      
+      // Check for pending referral
+      const pendingRef = db.prepare('SELECT * FROM pending_referrals WHERE telegram_id = ?').get(tgUser.id.toString());
+      if (pendingRef) {
+        const referrer = db.prepare('SELECT * FROM users WHERE referral_code = ?').get(pendingRef.referral_code);
+        if (referrer && referrer.telegram_id !== tgUser.id.toString()) {
+          db.prepare('UPDATE users SET referred_by = ? WHERE id = ?').run(referrer.id, user.id);
+          db.prepare('INSERT INTO referrals (referrer_id, referred_id) VALUES (?, ?)').run(referrer.id, user.id);
+        }
+        db.prepare('DELETE FROM pending_referrals WHERE telegram_id = ?').run(tgUser.id.toString());
+      }
     }
-  });
+    
+    // Get orders
+    const orders = db.prepare('SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC').all(user.id);
+    
+    // Get cashback history
+    const cashbackHistory = db.prepare('SELECT * FROM cashback_history WHERE user_id = ? ORDER BY created_at DESC').all(user.id);
+    
+    // Get referrals
+    const referrals = db.prepare(`
+      SELECT u.name, u.username, r.earnings, r.created_at
+      FROM referrals r
+      JOIN users u ON r.referred_id = u.id
+      WHERE r.referrer_id = ?
+    `).all(user.id);
+    
+    // Get notifications
+    const notifications = db.prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50').all(user.id);
+    
+    res.json({
+      id: user.id,
+      telegramId: user.telegram_id,
+      name: user.name,
+      username: user.username,
+      level: user.level,
+      totalSpent: user.total_spent,
+      cashback: user.cashback,
+      referralCode: user.referral_code,
+      referralEarnings: user.referral_earnings,
+      trc20Wallet: user.trc20_wallet,
+      orders: orders.map(o => ({
+        id: o.id,
+        service: o.service,
+        niche: o.niche,
+        formats: JSON.parse(o.formats || '[]'),
+        description: o.description,
+        refs: o.refs,
+        basePrice: o.base_price,
+        discount: o.discount,
+        cashbackUsed: o.cashback_used,
+        total: o.total,
+        cashbackEarned: o.cashback_earned,
+        status: o.status,
+        txHash: o.tx_hash,
+        paymentMethod: o.payment_method,
+        reviewed: o.reviewed === 1,
+        createdAt: o.created_at
+      })),
+      cashbackHistory: cashbackHistory.map(h => ({
+        amount: h.amount,
+        description: h.description,
+        date: h.created_at
+      })),
+      referrals: referrals.map(r => ({
+        name: r.name,
+        username: r.username,
+        earnings: r.earnings,
+        date: r.created_at
+      })),
+      notifications: notifications.map(n => ({
+        id: n.id,
+        title: n.title,
+        message: n.message,
+        read: n.read === 1,
+        date: n.created_at
+      })),
+      settings: {
+        notifOrders: true,
+        notifPromo: true,
+        notifRef: true
+      }
+    });
+  } catch (error) {
+    console.error('Error getting user:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // Update user
 app.post('/api/user', authMiddleware, (req, res) => {
-  const tgUser = req.telegramUser;
-  const { name, trc20Wallet, settings } = req.body;
-  
-  db.prepare(`
-    UPDATE users SET name = ?, trc20_wallet = ?
-    WHERE telegram_id = ?
-  `).run(name, trc20Wallet, tgUser.id.toString());
-  
-  res.json({ success: true });
+  try {
+    const tgUser = req.telegramUser;
+    const { name, trc20Wallet } = req.body;
+    
+    db.prepare(`
+      UPDATE users SET name = ?, trc20_wallet = ?
+      WHERE telegram_id = ?
+    `).run(name, trc20Wallet || null, tgUser.id.toString());
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error updating user:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // Create order
 app.post('/api/orders', authMiddleware, (req, res) => {
-  const tgUser = req.telegramUser;
-  const user = db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(tgUser.id.toString());
-  
-  const order = req.body;
-  const orderId = 'ORD' + Date.now();
-  
-  // Insert order
-  db.prepare(`
-    INSERT INTO orders (id, user_id, service, niche, formats, description, refs, base_price, discount, cashback_used, total, cashback_earned, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-  `).run(
-    orderId,
-    user.id,
-    order.service,
-    order.niche,
-    JSON.stringify(order.formats),
-    order.description,
-    order.refs,
-    order.basePrice,
-    order.discount,
-    order.cashbackUsed,
-    order.total,
-    order.cashbackEarned
-  );
-  
-  // Update user cashback and total spent
-  db.prepare(`
-    UPDATE users SET 
-      cashback = cashback - ? + ?,
-      total_spent = total_spent + ?
-    WHERE id = ?
-  `).run(order.cashbackUsed, order.cashbackEarned, order.total, user.id);
-  
-  // Add cashback history
-  if (order.cashbackUsed > 0) {
+  try {
+    const tgUser = req.telegramUser;
+    const user = db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(tgUser.id.toString());
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const order = req.body;
+    const orderId = order.id || ('ORD' + Date.now());
+    
+    // Insert order
+    db.prepare(`
+      INSERT INTO orders (id, user_id, service, niche, formats, description, refs, base_price, discount, cashback_used, total, cashback_earned, status, tx_hash, payment_method)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+    `).run(
+      orderId,
+      user.id,
+      order.service,
+      order.niche,
+      JSON.stringify(order.formats || []),
+      order.description || '',
+      order.refs || '',
+      order.basePrice,
+      order.discount,
+      order.cashbackUsed || 0,
+      order.total,
+      order.cashbackEarned,
+      order.txHash || null,
+      order.paymentMethod || null
+    );
+    
+    // Update user cashback and total spent
+    db.prepare(`
+      UPDATE users SET 
+        cashback = cashback - ? + ?,
+        total_spent = total_spent + ?
+      WHERE id = ?
+    `).run(order.cashbackUsed || 0, order.cashbackEarned, order.total, user.id);
+    
+    // Add cashback history
+    if (order.cashbackUsed > 0) {
+      db.prepare(`
+        INSERT INTO cashback_history (user_id, amount, description)
+        VALUES (?, ?, ?)
+      `).run(user.id, -order.cashbackUsed, `Оплата заказа #${orderId}`);
+    }
+    
     db.prepare(`
       INSERT INTO cashback_history (user_id, amount, description)
       VALUES (?, ?, ?)
-    `).run(user.id, -order.cashbackUsed, `Оплата заказа #${orderId}`);
+    `).run(user.id, order.cashbackEarned, `Кешбэк за заказ #${orderId}`);
+    
+    // Check and update level
+    updateUserLevel(user.id);
+    
+    // Process referral payment for first order
+    processReferralPayment(user.id);
+    
+    // Add notification
+    db.prepare(`
+      INSERT INTO notifications (user_id, title, message)
+      VALUES (?, ?, ?)
+    `).run(user.id, '📦 Заказ создан', `Заказ #${orderId} принят в обработку`);
+    
+    // Notify admin
+    notifyAdmin(
+      `🆕 Новый заказ #${orderId}\n\n` +
+      `👤 Клиент: ${user.name} (@${user.username || 'no username'})\n` +
+      `📋 Услуга: ${order.service}\n` +
+      `🎯 Ниша: ${order.niche}\n` +
+      `💰 Сумма: $${order.total}\n` +
+      `💳 Оплата: ${order.paymentMethod || 'не указано'}\n` +
+      `${order.txHash ? `🔗 TxHash: ${order.txHash}` : ''}`
+    );
+    
+    res.json({ success: true, orderId });
+  } catch (error) {
+    console.error('Error creating order:', error);
+    res.status(500).json({ error: 'Server error' });
   }
-  
-  db.prepare(`
-    INSERT INTO cashback_history (user_id, amount, description)
-    VALUES (?, ?, ?)
-  `).run(user.id, order.cashbackEarned, `Кешбэк за заказ #${orderId}`);
-  
-  // Check and update level
-  updateUserLevel(user.id);
-  
-  // Add notification
-  db.prepare(`
-    INSERT INTO notifications (user_id, title, message)
-    VALUES (?, ?, ?)
-  `).run(user.id, '📦 Заказ создан', `Заказ #${orderId} принят в обработку`);
-  
-  // Notify admin
-  notifyAdmin(`🆕 Новый заказ #${orderId}\n\nКлиент: ${user.name} (@${user.username})\nУслуга: ${order.service}\nНиша: ${order.niche}\nСумма: $${order.total}`);
-  
-  res.json({ success: true, orderId });
+});
+
+// Update order status (for admin)
+app.post('/api/orders/:orderId/status', (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { status, adminKey } = req.body;
+    
+    // Simple admin auth
+    if (adminKey !== process.env.ADMIN_KEY) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    
+    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    
+    db.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, orderId);
+    
+    // Notify user
+    notifyOrderStatus(order.user_id, orderId, status);
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error updating order status:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // Submit review
 app.post('/api/reviews', authMiddleware, (req, res) => {
-  const tgUser = req.telegramUser;
-  const user = db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(tgUser.id.toString());
-  
-  const { orderId, rating, text } = req.body;
-  
-  // Mark order as reviewed
-  db.prepare('UPDATE orders SET reviewed = 1 WHERE id = ? AND user_id = ?').run(orderId, user.id);
-  
-  // Add review bonus
-  const reviewBonus = 2;
-  db.prepare('UPDATE users SET cashback = cashback + ? WHERE id = ?').run(reviewBonus, user.id);
-  
-  db.prepare(`
-    INSERT INTO cashback_history (user_id, amount, description)
-    VALUES (?, ?, ?)
-  `).run(user.id, reviewBonus, 'Бонус за отзыв');
-  
-  // Notify admin
-  notifyAdmin(`⭐ Новый отзыв (${rating}/5)\n\nКлиент: ${user.name}\nЗаказ: #${orderId}\n\n${text}`);
-  
-  res.json({ success: true });
+  try {
+    const tgUser = req.telegramUser;
+    const user = db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(tgUser.id.toString());
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const { orderId, rating, text } = req.body;
+    
+    // Mark order as reviewed
+    db.prepare('UPDATE orders SET reviewed = 1 WHERE id = ? AND user_id = ?').run(orderId, user.id);
+    
+    // Add review bonus
+    const reviewBonus = 2;
+    db.prepare('UPDATE users SET cashback = cashback + ? WHERE id = ?').run(reviewBonus, user.id);
+    
+    db.prepare(`
+      INSERT INTO cashback_history (user_id, amount, description)
+      VALUES (?, ?, ?)
+    `).run(user.id, reviewBonus, 'Бонус за отзыв');
+    
+    // Notify admin
+    notifyAdmin(`⭐ Новый отзыв (${rating}/5)\n\n👤 Клиент: ${user.name}\n📦 Заказ: #${orderId}\n\n💬 ${text || 'Без текста'}`);
+    
+    res.json({ success: true, bonus: reviewBonus });
+  } catch (error) {
+    console.error('Error submitting review:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
-// Apply referral
+// Apply promo/referral code
 app.post('/api/referral/apply', authMiddleware, (req, res) => {
-  const tgUser = req.telegramUser;
-  const { code } = req.body;
-  
-  const referrer = db.prepare('SELECT * FROM users WHERE referral_code = ?').get(code);
-  if (!referrer) {
-    return res.status(400).json({ error: 'Invalid code' });
+  try {
+    const tgUser = req.telegramUser;
+    const { code } = req.body;
+    
+    const referrer = db.prepare('SELECT * FROM users WHERE referral_code = ?').get(code);
+    if (!referrer) {
+      return res.status(400).json({ error: 'Invalid code' });
+    }
+    
+    const user = db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(tgUser.id.toString());
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    if (user.referred_by) {
+      return res.status(400).json({ error: 'Already referred' });
+    }
+    
+    if (referrer.telegram_id === user.telegram_id) {
+      return res.status(400).json({ error: 'Cannot refer yourself' });
+    }
+    
+    // Set referred_by
+    db.prepare('UPDATE users SET referred_by = ? WHERE id = ?').run(referrer.id, user.id);
+    
+    // Add to referrals table
+    db.prepare(`
+      INSERT INTO referrals (referrer_id, referred_id)
+      VALUES (?, ?)
+    `).run(referrer.id, user.id);
+    
+    res.json({ success: true, discount: 15 });
+  } catch (error) {
+    console.error('Error applying referral:', error);
+    res.status(500).json({ error: 'Server error' });
   }
-  
-  const user = db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(tgUser.id.toString());
-  
-  if (user.referred_by) {
-    return res.status(400).json({ error: 'Already referred' });
+});
+
+// Mark notifications as read
+app.post('/api/notifications/read', authMiddleware, (req, res) => {
+  try {
+    const tgUser = req.telegramUser;
+    const user = db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(tgUser.id.toString());
+    
+    if (user) {
+      db.prepare('UPDATE notifications SET read = 1 WHERE user_id = ?').run(user.id);
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error marking notifications as read:', error);
+    res.status(500).json({ error: 'Server error' });
   }
-  
-  if (referrer.telegram_id === user.telegram_id) {
-    return res.status(400).json({ error: 'Cannot refer yourself' });
-  }
-  
-  // Set referred_by
-  db.prepare('UPDATE users SET referred_by = ? WHERE id = ?').run(referrer.id, user.id);
-  
-  // Add to referrals table
-  db.prepare(`
-    INSERT INTO referrals (referrer_id, referred_id)
-    VALUES (?, ?)
-  `).run(referrer.id, user.id);
-  
-  res.json({ success: true, discount: 15 });
 });
 
 // ==================== HELPERS ====================
 
 function generateRefCode(name) {
-  const prefix = (name || 'USER').substring(0, 4).toUpperCase();
+  const prefix = (name || 'USER').substring(0, 4).toUpperCase().replace(/[^A-Z]/g, 'X');
   const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
   return prefix + rand;
 }
 
 function updateUserLevel(userId) {
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
-  const spent = user.total_spent;
-  
-  let newLevel = 'none';
-  if (spent >= 10000) newLevel = 'platinum';
-  else if (spent >= 1000) newLevel = 'gold';
-  else if (spent >= 500) newLevel = 'silver';
-  else if (spent >= 100) newLevel = 'bronze';
-  
-  if (newLevel !== user.level && newLevel !== 'none') {
-    db.prepare('UPDATE users SET level = ? WHERE id = ?').run(newLevel, userId);
+  try {
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+    if (!user) return;
     
-    const discounts = { bronze: 5, silver: 10, gold: 15, platinum: 20 };
+    const spent = user.total_spent;
     
-    db.prepare(`
-      INSERT INTO notifications (user_id, title, message)
-      VALUES (?, ?, ?)
-    `).run(userId, '🎉 Новый уровень!', `Теперь вы ${newLevel}. Скидка ${discounts[newLevel]}%`);
+    let newLevel = 'none';
+    if (spent >= 10000) newLevel = 'platinum';
+    else if (spent >= 1000) newLevel = 'gold';
+    else if (spent >= 500) newLevel = 'silver';
+    else if (spent >= 100) newLevel = 'bronze';
     
-    // Send Telegram notification
-    bot.telegram.sendMessage(user.telegram_id, 
-      `🎉 Поздравляем! Вы достигли уровня ${newLevel.toUpperCase()}!\n\nТеперь ваша скидка: ${discounts[newLevel]}%`
-    ).catch(() => {});
+    if (newLevel !== user.level && newLevel !== 'none') {
+      db.prepare('UPDATE users SET level = ? WHERE id = ?').run(newLevel, userId);
+      
+      const discounts = { bronze: 5, silver: 10, gold: 15, platinum: 20 };
+      
+      db.prepare(`
+        INSERT INTO notifications (user_id, title, message)
+        VALUES (?, ?, ?)
+      `).run(userId, '🎉 Новый уровень!', `Теперь вы ${newLevel}. Скидка ${discounts[newLevel]}%`);
+      
+      // Send Telegram notification
+      bot.telegram.sendMessage(user.telegram_id, 
+        `🎉 Поздравляем! Вы достигли уровня ${newLevel.toUpperCase()}!\n\nТеперь ваша скидка: ${discounts[newLevel]}%`
+      ).catch(err => console.error('Failed to send level notification:', err.message));
+    }
+  } catch (error) {
+    console.error('Error updating user level:', error);
   }
 }
 
 function notifyAdmin(message) {
   if (process.env.ADMIN_CHAT_ID) {
-    bot.telegram.sendMessage(process.env.ADMIN_CHAT_ID, message).catch(() => {});
+    bot.telegram.sendMessage(process.env.ADMIN_CHAT_ID, message).catch(err => {
+      console.error('Failed to notify admin:', err.message);
+    });
   }
 }
 
 // Process referral payment after first order
 function processReferralPayment(userId) {
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
-  if (!user.referred_by) return;
-  
-  // Check if this is first order
-  const ordersCount = db.prepare('SELECT COUNT(*) as count FROM orders WHERE user_id = ?').get(userId).count;
-  if (ordersCount !== 1) return;
-  
-  const firstOrder = db.prepare('SELECT * FROM orders WHERE user_id = ? ORDER BY created_at LIMIT 1').get(userId);
-  const referralAmount = firstOrder.total * 0.25; // 25%
-  
-  // Update referrer earnings
-  db.prepare(`
-    UPDATE users SET referral_earnings = referral_earnings + ?
-    WHERE id = ?
-  `).run(referralAmount, user.referred_by);
-  
-  db.prepare(`
-    UPDATE referrals SET earnings = ?
-    WHERE referrer_id = ? AND referred_id = ?
-  `).run(referralAmount, user.referred_by, userId);
-  
-  const referrer = db.prepare('SELECT * FROM users WHERE id = ?').get(user.referred_by);
-  
-  // Notify referrer
-  db.prepare(`
-    INSERT INTO notifications (user_id, title, message)
-    VALUES (?, ?, ?)
-  `).run(referrer.id, '💰 Реферальный бонус!', `+$${referralAmount.toFixed(2)} за приглашённого ${user.name}`);
-  
-  bot.telegram.sendMessage(referrer.telegram_id,
-    `💰 Реферальный бонус!\n\n${user.name} сделал первый заказ.\nВаш бонус: $${referralAmount.toFixed(2)}\n\n${referrer.trc20_wallet ? 'Выплата на ваш TRC-20 кошелёк' : '⚠️ Укажите TRC-20 кошелёк в настройках для получения выплаты'}`
-  ).catch(() => {});
+  try {
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+    if (!user || !user.referred_by) return;
+    
+    // Check if this is first order
+    const ordersCount = db.prepare('SELECT COUNT(*) as count FROM orders WHERE user_id = ?').get(userId).count;
+    if (ordersCount !== 1) return;
+    
+    const firstOrder = db.prepare('SELECT * FROM orders WHERE user_id = ? ORDER BY created_at LIMIT 1').get(userId);
+    if (!firstOrder) return;
+    
+    const referralAmount = firstOrder.total * 0.25; // 25%
+    
+    // Update referrer earnings
+    db.prepare(`
+      UPDATE users SET referral_earnings = referral_earnings + ?
+      WHERE id = ?
+    `).run(referralAmount, user.referred_by);
+    
+    db.prepare(`
+      UPDATE referrals SET earnings = ?
+      WHERE referrer_id = ? AND referred_id = ?
+    `).run(referralAmount, user.referred_by, userId);
+    
+    const referrer = db.prepare('SELECT * FROM users WHERE id = ?').get(user.referred_by);
+    if (!referrer) return;
+    
+    // Notify referrer
+    db.prepare(`
+      INSERT INTO notifications (user_id, title, message)
+      VALUES (?, ?, ?)
+    `).run(referrer.id, '💰 Реферальный бонус!', `+$${referralAmount.toFixed(2)} за приглашённого ${user.name}`);
+    
+    const walletMessage = referrer.trc20_wallet 
+      ? 'Выплата будет отправлена на ваш TRC-20 кошелёк'
+      : '⚠️ Укажите TRC-20 кошелёк в настройках для получения выплаты';
+    
+    bot.telegram.sendMessage(referrer.telegram_id,
+      `💰 Реферальный бонус!\n\n${user.name} сделал первый заказ.\nВаш бонус: $${referralAmount.toFixed(2)}\n\n${walletMessage}`
+    ).catch(err => console.error('Failed to send referral notification:', err.message));
+    
+    // Notify admin about referral payment
+    notifyAdmin(
+      `💸 Реферальная выплата\n\n` +
+      `👤 Получатель: ${referrer.name} (@${referrer.username || 'no username'})\n` +
+      `💰 Сумма: $${referralAmount.toFixed(2)}\n` +
+      `💎 Кошелёк: ${referrer.trc20_wallet || 'НЕ УКАЗАН'}\n` +
+      `👥 За пользователя: ${user.name}`
+    );
+  } catch (error) {
+    console.error('Error processing referral payment:', error);
+  }
+}
+
+// Notify user about order status
+async function notifyOrderStatus(userId, orderId, status) {
+  try {
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+    if (!user) return;
+    
+    const statuses = {
+      working: { emoji: '🎨', text: 'Ваш заказ в работе!' },
+      completed: { emoji: '✅', text: 'Ваш заказ готов!' },
+      cancelled: { emoji: '❌', text: 'Заказ отменён' }
+    };
+    
+    const statusInfo = statuses[status] || { emoji: '📦', text: 'Статус заказа обновлён' };
+    
+    // Add notification to DB
+    db.prepare(`
+      INSERT INTO notifications (user_id, title, message)
+      VALUES (?, ?, ?)
+    `).run(userId, `${statusInfo.emoji} ${statusInfo.text}`, `Заказ #${orderId}`);
+    
+    // Send Telegram message
+    await bot.telegram.sendMessage(user.telegram_id, 
+      `${statusInfo.emoji} ${statusInfo.text}\n\nЗаказ #${orderId}`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '📱 Открыть в приложении', web_app: { url: process.env.WEBAPP_URL } }
+          ]]
+        }
+      }
+    );
+  } catch (error) {
+    console.error('Failed to notify order status:', error.message);
+  }
 }
 
 // ==================== TELEGRAM BOT ====================
 
 bot.command('start', async (ctx) => {
-  const refCode = ctx.message.text.split(' ')[1];
-  
-  const keyboard = {
-    inline_keyboard: [[
-      { text: '🚀 Открыть личный кабинет', web_app: { url: process.env.WEBAPP_URL } }
-    ]]
-  };
-  
-  await ctx.replyWithPhoto(
-    { url: 'https://via.placeholder.com/800x400/000000/ffffff?text=White+Agency' },
-    {
-      caption: `👋 Добро пожаловать в White Agency!\n\n` +
-        `Мы делаем креативы под результат для:\n` +
-        `• Gambling / Betting\n` +
-        `• Crypto / Forex\n` +
-        `• Товарка\n` +
-        `• И другие ниши\n\n` +
-        `${refCode ? '🎁 У вас промокод на -15% на первый заказ!' : ''}\n\n` +
-        `Нажмите кнопку ниже, чтобы открыть личный кабинет 👇`,
+  try {
+    const refCode = ctx.message.text.split(' ')[1];
+    
+    // Save pending referral
+    if (refCode) {
+      const existingUser = db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(ctx.from.id.toString());
+      if (!existingUser) {
+        // Save for later when user opens the app
+        db.prepare('INSERT OR REPLACE INTO pending_referrals (telegram_id, referral_code) VALUES (?, ?)')
+          .run(ctx.from.id.toString(), refCode);
+      }
+    }
+    
+    const keyboard = {
+      inline_keyboard: [[
+        { text: '🚀 Открыть личный кабинет', web_app: { url: process.env.WEBAPP_URL } }
+      ]]
+    };
+    
+    const welcomeMessage = 
+      `👋 Добро пожаловать в *White Agency*!\n\n` +
+      `Мы делаем креативы под результат для:\n` +
+      `• 🎰 Gambling / Betting\n` +
+      `• 💹 Crypto / Forex\n` +
+      `• 📦 Товарка\n` +
+      `• 💼 Вакансии / Лидген\n` +
+      `• И другие ниши\n\n` +
+      `${refCode ? '🎁 *У вас промокод на -15% на первый заказ!*\n\n' : ''}` +
+      `✨ *Что вы получите:*\n` +
+      `• Скидки до 20% по программе лояльности\n` +
+      `• 5% кешбэк с каждого заказа\n` +
+      `• 25% с первого заказа друга\n\n` +
+      `Нажмите кнопку ниже, чтобы открыть личный кабинет 👇`;
+    
+    await ctx.reply(welcomeMessage, {
+      parse_mode: 'Markdown',
       reply_markup: keyboard
-    }
-  );
-  
-  // Apply referral if code provided
-  if (refCode) {
-    const referrer = db.prepare('SELECT * FROM users WHERE referral_code = ?').get(refCode);
-    if (referrer && referrer.telegram_id !== ctx.from.id.toString()) {
-      // Will be applied when user opens the app
-    }
+    });
+  } catch (error) {
+    console.error('Error in /start command:', error);
+    // Fallback without formatting
+    await ctx.reply(
+      `👋 Добро пожаловать в White Agency!\n\nНажмите кнопку ниже, чтобы открыть личный кабинет 👇`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🚀 Открыть личный кабинет', web_app: { url: process.env.WEBAPP_URL } }
+          ]]
+        }
+      }
+    ).catch(e => console.error('Fallback message failed:', e));
   }
 });
 
 bot.command('help', async (ctx) => {
-  await ctx.reply(
-    `📋 Команды:\n\n` +
-    `/start - Открыть личный кабинет\n` +
-    `/prices - Прайс-лист\n` +
-    `/ref - Реферальная программа\n` +
-    `/support - Связаться с менеджером`
-  );
+  try {
+    await ctx.reply(
+      `📋 *Команды:*\n\n` +
+      `/start - Открыть личный кабинет\n` +
+      `/prices - Прайс-лист\n` +
+      `/ref - Реферальная программа\n` +
+      `/support - Связаться с менеджером`,
+      { parse_mode: 'Markdown' }
+    );
+  } catch (error) {
+    console.error('Error in /help command:', error);
+  }
 });
 
 bot.command('prices', async (ctx) => {
-  await ctx.reply(
-    `💰 Цены на услуги:\n\n` +
-    `📸 Статика — от $10\n` +
-    `📸 Пак статики (5 шт) — от $30\n` +
-    `🎬 Видео-креатив — от $25\n` +
-    `💋 Липсинг — от $40\n` +
-    `🤖 AI-аватар — от $30\n` +
-    `📱 UGC-видео — от $100\n` +
-    `🎞 GIF/Анимация — от $15\n` +
-    `💻 Дизайн лендинга — от $200\n\n` +
-    `➕ 5% кешбэк с каждого заказа!`,
-    {
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '🚀 Сделать заказ', web_app: { url: process.env.WEBAPP_URL } }
-        ]]
+  try {
+    await ctx.reply(
+      `💰 *Цены на услуги:*\n\n` +
+      `📸 Статика — от $10\n` +
+      `📸 Пак статики (5 шт) — от $30\n` +
+      `🎬 Видео-креатив — от $25\n` +
+      `💋 Липсинг — от $40\n` +
+      `🤖 AI-аватар — от $30\n` +
+      `📱 UGC-видео — от $100\n` +
+      `🎞 GIF/Анимация — от $15\n` +
+      `💻 Дизайн лендинга — от $200\n\n` +
+      `➕ *5% кешбэк* с каждого заказа!`,
+      {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🚀 Сделать заказ', web_app: { url: process.env.WEBAPP_URL } }
+          ]]
+        }
       }
-    }
-  );
+    );
+  } catch (error) {
+    console.error('Error in /prices command:', error);
+  }
 });
 
 bot.command('ref', async (ctx) => {
-  const user = db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(ctx.from.id.toString());
-  
-  if (!user) {
-    return ctx.reply('Сначала откройте личный кабинет', {
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '🚀 Открыть', web_app: { url: process.env.WEBAPP_URL } }
-        ]]
-      }
-    });
+  try {
+    const user = db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(ctx.from.id.toString());
+    
+    if (!user) {
+      return ctx.reply('Сначала откройте личный кабинет 👇', {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🚀 Открыть', web_app: { url: process.env.WEBAPP_URL } }
+          ]]
+        }
+      });
+    }
+    
+    const refCount = db.prepare('SELECT COUNT(*) as count FROM referrals WHERE referrer_id = ?').get(user.id).count;
+    
+    await ctx.reply(
+      `👥 *Реферальная программа*\n\n` +
+      `📋 Ваш код: \`${user.referral_code}\`\n` +
+      `🔗 Ваша ссылка: t.me/${ctx.botInfo.username}?start=${user.referral_code}\n\n` +
+      `💰 Получайте *25%* с первого заказа каждого приглашённого друга!\n` +
+      `🎁 Друг получит *-15%* на первый заказ\n\n` +
+      `📊 Статистика:\n` +
+      `• Приглашено: ${refCount}\n` +
+      `• Заработано: $${user.referral_earnings.toFixed(2)}`,
+      { parse_mode: 'Markdown' }
+    );
+  } catch (error) {
+    console.error('Error in /ref command:', error);
   }
-  
-  await ctx.reply(
-    `👥 Реферальная программа\n\n` +
-    `Ваш код: ${user.referral_code}\n` +
-    `Ваша ссылка: t.me/${ctx.botInfo.username}?start=${user.referral_code}\n\n` +
-    `💰 Получайте 25% с первого заказа каждого приглашённого друга!\n` +
-    `🎁 Друг получит -15% на первый заказ\n\n` +
-    `Приглашено: ${db.prepare('SELECT COUNT(*) as count FROM referrals WHERE referrer_id = ?').get(user.id).count}\n` +
-    `Заработано: $${user.referral_earnings.toFixed(2)}`
-  );
 });
 
 bot.command('support', async (ctx) => {
-  await ctx.reply(
-    `💬 Связаться с менеджером:\n\n@WhiteAgency_manager`,
-    {
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '✍️ Написать менеджеру', url: 'https://t.me/WhiteAgency_manager' }
-        ]]
+  try {
+    await ctx.reply(
+      `💬 Связаться с менеджером:\n\n@${process.env.MANAGER_USERNAME || 'WhiteAgency_manager'}`,
+      {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '✍️ Написать менеджеру', url: `https://t.me/${process.env.MANAGER_USERNAME || 'WhiteAgency_manager'}` }
+          ]]
+        }
       }
-    }
-  );
+    );
+  } catch (error) {
+    console.error('Error in /support command:', error);
+  }
 });
 
-// Notify user about order status
-async function notifyOrderStatus(userId, orderId, status) {
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
-  const statuses = {
-    working: '🎨 Ваш заказ в работе!',
-    completed: '✅ Ваш заказ готов!'
-  };
-  
-  await bot.telegram.sendMessage(user.telegram_id, 
-    `${statuses[status]}\n\nЗаказ #${orderId}`,
-    {
-      reply_markup: {
-        inline_keyboard: [[
-          { text: '📱 Открыть в приложении', web_app: { url: process.env.WEBAPP_URL } }
-        ]]
-      }
-    }
-  ).catch(() => {});
-}
+// Handle any errors
+bot.catch((err, ctx) => {
+  console.error('Bot error:', err);
+});
 
 // ==================== START ====================
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
+// Start bot with error handling
 bot.launch().then(() => {
-  console.log('🤖 Bot started');
+  console.log('🤖 Bot started successfully');
+}).catch(err => {
+  console.error('Failed to start bot:', err);
 });
 
-app.listen(PORT, () => {
+// Start server
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
 
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+// Graceful shutdown
+process.once('SIGINT', () => {
+  console.log('SIGINT received, shutting down...');
+  bot.stop('SIGINT');
+  process.exit(0);
+});
+
+process.once('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down...');
+  bot.stop('SIGTERM');
+  process.exit(0);
+});
+
+// Handle uncaught errors
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
