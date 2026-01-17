@@ -131,6 +131,9 @@
         <button onclick="switchTab('promos')" class="nav-btn px-4 py-2 rounded-lg whitespace-nowrap text-sm font-medium" data-tab="promos">
           Промокоды
         </button>
+        <button onclick="switchTab('withdrawals')" class="nav-btn px-4 py-2 rounded-lg whitespace-nowrap text-sm font-medium" data-tab="withdrawals">
+          💸 Выплаты
+        </button>
         <button onclick="switchTab('settings')" class="nav-btn px-4 py-2 rounded-lg whitespace-nowrap text-sm font-medium" data-tab="settings">
           Настройки
         </button>
@@ -268,6 +271,38 @@
           <h3 class="font-medium mb-4 text-gray-400 text-sm uppercase tracking-wide">Активные промокоды</h3>
           <div id="promosList" class="space-y-3">
             <div class="text-center text-gray-500 py-4">Загрузка...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Withdrawals Tab -->
+      <div id="withdrawalsTab" class="tab-content hidden">
+        <div class="glass rounded-xl p-6">
+          <div class="flex items-center justify-between mb-6">
+            <h3 class="font-medium text-gray-400 text-sm uppercase tracking-wide">Запросы на выплату</h3>
+            <button onclick="loadWithdrawals()" class="text-gray-500 hover:text-white transition" title="Обновить">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="mb-4 flex gap-2">
+            <select id="withdrawalStatusFilter" onchange="renderWithdrawals()" class="bg-gray-900/50 border border-gray-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-white transition flex-1">
+              <option value="">Все статусы</option>
+              <option value="pending">В ожидании</option>
+              <option value="completed">Выплачено</option>
+              <option value="cancelled">Отменено</option>
+            </select>
+            <select id="withdrawalTypeFilter" onchange="renderWithdrawals()" class="bg-gray-900/50 border border-gray-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-white transition flex-1">
+              <option value="">Все типы</option>
+              <option value="cashback">Кешбэк</option>
+              <option value="referral">Реферальный</option>
+            </select>
+          </div>
+
+          <div id="withdrawalsList" class="space-y-3">
+            <div class="text-center text-gray-500 py-12">Загрузка...</div>
           </div>
         </div>
       </div>
@@ -888,6 +923,134 @@
       }
     }
 
+    // Withdrawals Management
+    let withdrawalsData = [];
+
+    async function loadWithdrawals() {
+      try {
+        withdrawalsData = await apiCall('/api/admin/withdrawals');
+        renderWithdrawals();
+      } catch (error) {
+        console.error('Error loading withdrawals:', error);
+        showToast('Ошибка загрузки выплат', 'error');
+      }
+    }
+
+    function renderWithdrawals() {
+      const container = document.getElementById('withdrawalsList');
+      const statusFilter = document.getElementById('withdrawalStatusFilter').value;
+      const typeFilter = document.getElementById('withdrawalTypeFilter').value;
+
+      let filtered = withdrawalsData.filter(w => {
+        const matchStatus = !statusFilter || w.status === statusFilter;
+        const matchType = !typeFilter || w.type === typeFilter;
+        return matchStatus && matchType;
+      });
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<div class="text-center text-gray-500 py-12">Нет запросов на выплату</div>';
+        return;
+      }
+
+      container.innerHTML = filtered.map(w => {
+        const statusColors = {
+          pending: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+          completed: 'bg-green-500/20 text-green-400 border-green-500/30',
+          cancelled: 'bg-red-500/20 text-red-400 border-red-500/30'
+        };
+
+        const statusText = {
+          pending: 'В ожидании',
+          completed: 'Выплачено',
+          cancelled: 'Отменено'
+        };
+
+        const typeText = w.type === 'cashback' ? '💰 Кешбэк' : '👥 Реферальный';
+        const statusClass = statusColors[w.status] || 'bg-gray-500/20 text-gray-400';
+
+        return `
+          <div class="glass rounded-xl p-4 border border-gray-800/50">
+            <div class="flex items-start justify-between mb-3">
+              <div class="flex-1">
+                <div class="flex items-center gap-2 mb-2">
+                  <span class="text-sm font-medium">${w.user_name || 'Пользователь'}</span>
+                  <span class="text-xs text-gray-600">@${w.username || 'нет'}</span>
+                  <span class="${statusClass} px-2 py-0.5 rounded-full text-xs font-medium border">${statusText[w.status]}</span>
+                </div>
+                <div class="text-xs text-gray-500 space-y-1">
+                  <div>ID: ${w.telegram_id}</div>
+                  <div>${typeText} · Запрос #${w.id}</div>
+                  <div>💳 Кошелек: <span class="font-mono">${w.wallet_address}</span></div>
+                  <div class="text-gray-600">Создан: ${formatDate(w.created_at)}</div>
+                  ${w.tx_hash ? `<div class="text-gray-600">TxHash: ${w.tx_hash.substring(0, 20)}...</div>` : ''}
+                </div>
+              </div>
+              <div class="text-right">
+                <div class="text-2xl font-bold text-green-400 mb-1">$${w.amount.toFixed(2)}</div>
+                ${w.status === 'pending' ? `
+                  <div class="text-xs text-gray-500 mb-2">
+                    <div>Баланс кешбэк: $${(w.cashback || 0).toFixed(2)}</div>
+                    <div>Баланс реф: $${(w.referral_earnings || 0).toFixed(2)}</div>
+                  </div>
+                  <button onclick="processWithdrawal(${w.id})" class="w-full bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-xs font-medium mb-1 transition">
+                    ✅ Выплатить
+                  </button>
+                  <button onclick="cancelWithdrawal(${w.id})" class="w-full bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-xs font-medium transition">
+                    ❌ Отменить
+                  </button>
+                ` : w.processed_at ? `
+                  <div class="text-xs text-gray-600">Обработан: ${formatDate(w.processed_at)}</div>
+                ` : ''}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function processWithdrawal(id) {
+      const withdrawal = withdrawalsData.find(w => w.id === id);
+      if (!withdrawal) return;
+
+      const txHash = prompt(
+        `Выплата пользователю ${withdrawal.user_name}\n` +
+        `Сумма: $${withdrawal.amount}\n` +
+        `Кошелек: ${withdrawal.wallet_address}\n\n` +
+        `Введите TxHash транзакции (или оставьте пустым):`
+      );
+
+      if (txHash === null) return; // Cancel
+
+      try {
+        await apiCall(`/api/admin/withdrawals/${id}/process`, 'POST', { tx_hash: txHash || null });
+        showToast('Выплата выполнена!', 'success');
+        await Promise.all([loadWithdrawals(), loadUsers()]);
+      } catch (error) {
+        showToast('Ошибка: ' + error.message, 'error');
+      }
+    }
+
+    async function cancelWithdrawal(id) {
+      const withdrawal = withdrawalsData.find(w => w.id === id);
+      if (!withdrawal) return;
+
+      const reason = prompt(
+        `Отмена выплаты пользователю ${withdrawal.user_name}\n` +
+        `Сумма: $${withdrawal.amount}\n\n` +
+        `Введите причину отмены:`
+      );
+
+      if (!reason) return;
+
+      try {
+        await apiCall(`/api/admin/withdrawals/${id}/cancel`, 'POST', { reason });
+        showToast('Выплата отменена', 'success');
+        await loadWithdrawals();
+      } catch (error) {
+        showToast('Ошибка: ' + error.message, 'error');
+      }
+    }
+
     async function addCashback(userId, userName) {
       const amount = prompt(`Введите сумму кешбека для ${userName}:\n(положительное число для добавления, отрицательное для вычитания)`);
       if (!amount) return;
@@ -909,7 +1072,7 @@
 
     async function refreshAllData() {
       showToast('Обновление данных...', 'info');
-      await Promise.all([loadOrders(), loadUsers(), loadReferrals(), loadServices(), loadProducts(), loadPromos()]);
+      await Promise.all([loadOrders(), loadUsers(), loadReferrals(), loadServices(), loadProducts(), loadPromos(), loadWithdrawals()]);
       showToast('Данные обновлены', 'success');
     }
 
@@ -933,29 +1096,56 @@
         return;
       }
       
-      document.getElementById('ordersList').innerHTML = filtered.map(order => `
-        <div class="order-card glass rounded-xl p-4 transition cursor-pointer fade-in border border-gray-800/50 hover:border-gray-700" onclick="openOrderModal('${order.id}')">
-          <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="flex-1 min-w-[200px]">
-              <div class="flex items-center gap-3 mb-2">
-                <span class="font-mono text-sm text-gray-400">#${order.id}</span>
-                <span class="status-${order.status} px-2 py-0.5 rounded-full text-xs font-medium">
-                  ${getStatusText(order.status)}
-                </span>
+      document.getElementById('ordersList').innerHTML = filtered.map(order => {
+        // Determine order type
+        let orderType = '';
+        let orderDetails = '';
+        let isCartOrder = false;
+
+        try {
+          if (order.items && typeof order.items === 'string') {
+            const items = JSON.parse(order.items);
+            if (Array.isArray(items) && items.length > 0) {
+              isCartOrder = true;
+              orderType = '<span class="px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded text-xs font-medium border border-purple-500/30">📦 Каталог</span>';
+              const itemsList = items.map(item => `${item.name} x${item.quantity}`).join(', ');
+              orderDetails = `<div class="text-gray-500">${itemsList}</div>`;
+            }
+          }
+        } catch (e) {
+          // Not a cart order
+        }
+
+        if (!isCartOrder) {
+          orderType = '<span class="px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded text-xs font-medium border border-blue-500/30">🎨 Услуга</span>';
+          orderDetails = `<div class="text-gray-500">${order.service} · ${order.niche}</div>`;
+        }
+
+        return `
+          <div class="order-card glass rounded-xl p-4 transition cursor-pointer fade-in border border-gray-800/50 hover:border-gray-700" onclick="openOrderModal('${order.id}')">
+            <div class="flex flex-wrap items-start justify-between gap-4">
+              <div class="flex-1 min-w-[200px]">
+                <div class="flex items-center gap-2 mb-2 flex-wrap">
+                  <span class="font-mono text-sm text-gray-400">#${order.id}</span>
+                  ${orderType}
+                  <span class="status-${order.status} px-2 py-0.5 rounded-full text-xs font-medium">
+                    ${getStatusText(order.status)}
+                  </span>
+                </div>
+                <div class="text-gray-400 text-sm space-y-1">
+                  <div>${order.user_name || 'Неизвестно'} ${order.username ? `@${order.username}` : ''}</div>
+                  ${orderDetails}
+                  <div class="text-gray-600">${formatDate(order.created_at)}</div>
+                </div>
               </div>
-              <div class="text-gray-400 text-sm space-y-1">
-                <div>${order.user_name || 'Неизвестно'} ${order.username ? `@${order.username}` : ''}</div>
-                <div class="text-gray-500">${order.service} · ${order.niche}</div>
-                <div class="text-gray-600">${formatDate(order.created_at)}</div>
+              <div class="text-right">
+                <div class="text-xl font-medium">$${order.total}</div>
+                <div class="text-xs text-gray-600">${order.payment_method || 'Не указано'}</div>
               </div>
-            </div>
-            <div class="text-right">
-              <div class="text-xl font-medium">$${order.total}</div>
-              <div class="text-xs text-gray-600">${order.payment_method || 'Не указано'}</div>
             </div>
           </div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
     }
 
     function renderUsers() {
@@ -1529,6 +1719,10 @@
     function getStatusText(status) {
       const statuses = {
         pending: 'Ожидает',
+        awaiting_manager: 'Ожидает менеджера',
+        awaiting_payment: 'Ожидает оплаты',
+        pending_verification: 'Проверка оплаты',
+        verifying: 'Проверка оплаты',
         working: 'В работе',
         completed: 'Готов',
         cancelled: 'Отменён'
