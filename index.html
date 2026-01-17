@@ -275,17 +275,18 @@
     <!-- Quick Actions -->
     <section class="px-4 pb-4">
         <div class="grid grid-cols-4 gap-2">
-            <button onclick="showOrderForm()" class="flex flex-col items-center gap-1.5 p-3 rounded-2xl btn-primary hover:opacity-90 transition-opacity">
+            <button onclick="switchTab('catalog'); document.querySelector('[data-tab=catalog]').scrollIntoView({behavior: 'smooth', block: 'nearest'})" class="flex flex-col items-center gap-1.5 p-3 rounded-2xl btn-primary hover:opacity-90 transition-opacity">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path>
                 </svg>
-                <span class="text-xs font-medium">Заказ</span>
+                <span class="text-xs font-medium">Каталог</span>
             </button>
-            <button onclick="showPrices()" class="flex flex-col items-center gap-1.5 p-3 rounded-2xl bg-gray-100 hover:bg-gray-200 transition-colors">
+            <button onclick="showCart()" class="flex flex-col items-center gap-1.5 p-3 rounded-2xl bg-gray-100 hover:bg-gray-200 transition-colors relative">
+                <div id="cartBadge" class="hidden absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">0</div>
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path>
                 </svg>
-                <span class="text-xs font-medium">Цены</span>
+                <span class="text-xs font-medium">Корзина</span>
             </button>
             <button onclick="showGallery()" class="flex flex-col items-center gap-1.5 p-3 rounded-2xl bg-gray-100 hover:bg-gray-200 transition-colors">
                 <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -305,7 +306,10 @@
     <!-- Tabs -->
     <section class="px-4 mb-4">
         <div class="flex gap-2 overflow-x-auto scrollbar-hide pb-2">
-            <button onclick="switchTab('orders')" class="tab-btn tab-active px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all" data-tab="orders">
+            <button onclick="switchTab('catalog')" class="tab-btn tab-active px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all" data-tab="catalog">
+                🛍 Каталог
+            </button>
+            <button onclick="switchTab('orders')" class="tab-btn px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap bg-gray-100 transition-all" data-tab="orders">
                 Заказы
             </button>
             <button onclick="switchTab('promo')" class="tab-btn px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap bg-gray-100 transition-all" data-tab="promo">
@@ -322,8 +326,15 @@
 
     <!-- Tab Content -->
     <section class="px-4 pb-24" id="tabContent">
+        <!-- Catalog Tab -->
+        <div id="catalogTab" class="space-y-3 fade-in">
+            <div class="grid grid-cols-1 gap-3" id="catalogProducts">
+                <!-- Products will be rendered here -->
+            </div>
+        </div>
+
         <!-- Orders Tab -->
-        <div id="ordersTab" class="space-y-3 fade-in">
+        <div id="ordersTab" class="space-y-3 fade-in hidden">
             <div id="ordersList">
                 <div class="text-center py-8 text-gray-400">
                     <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -611,6 +622,52 @@
         </div>
     </div>
 
+    <!-- Cart Modal -->
+    <div id="cartModal" class="fixed bottom-0 left-0 right-0 rounded-t-3xl z-50 hidden max-h-[90vh] overflow-y-auto" style="background: var(--tg-theme-bg-color);">
+        <div class="p-6">
+            <div class="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4"></div>
+            <h2 class="text-xl font-bold text-center mb-2">🛒 Корзина</h2>
+            <p class="text-sm text-gray-500 text-center mb-6">Ваши товары для заказа</p>
+
+            <div id="cartItems" class="space-y-3 mb-6">
+                <!-- Cart items will be rendered here -->
+            </div>
+
+            <div id="cartEmpty" class="hidden text-center py-8 text-gray-400">
+                <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                </svg>
+                <p>Корзина пуста</p>
+                <button onclick="closeModal(); switchTab('catalog')" class="mt-4 px-6 py-2 btn-primary rounded-full text-sm font-medium">
+                    Перейти в каталог
+                </button>
+            </div>
+
+            <div id="cartSummary" class="hidden">
+                <div class="border-t pt-4 space-y-3">
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600">Товаров:</span>
+                        <span id="cartItemCount" class="font-medium">0</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-lg font-semibold">Итого:</span>
+                        <span class="text-2xl font-bold" id="cartTotal">$0.00</span>
+                    </div>
+                </div>
+
+                <div class="mt-4 space-y-3">
+                    <label class="text-sm font-medium block">Комментарий к заказу (опционально)</label>
+                    <textarea id="cartComment" rows="3" placeholder="Напишите дополнительные пожелания..." class="w-full px-4 py-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-black resize-none"></textarea>
+                </div>
+
+                <button onclick="sendCartToManager()" class="w-full mt-6 py-4 btn-primary rounded-xl font-semibold transition-opacity">
+                    📤 Отправить менеджеру
+                </button>
+                <p class="text-xs text-gray-500 text-center mt-2">Менеджер свяжется с вами для уточнения деталей</p>
+            </div>
+        </div>
+    </div>
+
     <!-- Settings Modal -->
     <div id="settingsModal" class="fixed bottom-0 left-0 right-0 rounded-t-3xl z-50 hidden max-h-[90vh] overflow-y-auto" style="background: var(--tg-theme-bg-color);">
         <div class="p-6">
@@ -867,7 +924,8 @@
             user: null,
             tgUser: null,
             isLoading: true,
-            appSettings: null
+            appSettings: null,
+            cart: [] // {productId, name, price, quantity}
         };
 
         // ==================== TELEGRAM WEBAPP ====================
@@ -1139,32 +1197,51 @@
                 const statusText = statusTexts[order.status] || order.status;
                 const borderClass = statusClass.split(' ').pop();
 
-                // Безопасная обработка formats
-                let formatsText = '';
-                if (Array.isArray(order.formats)) {
-                    formatsText = order.formats.join(', ');
-                } else if (typeof order.formats === 'string') {
-                    try {
-                        const parsed = JSON.parse(order.formats);
-                        formatsText = Array.isArray(parsed) ? parsed.join(', ') : order.formats;
-                    } catch {
-                        formatsText = order.formats;
-                    }
+                // Check if this is a cart order (has items)
+                const isCartOrder = Array.isArray(order.items) && order.items.length > 0;
+
+                let orderDetails = '';
+                if (isCartOrder) {
+                    // Show cart items
+                    const itemsList = order.items.map(item =>
+                        `${item.name} x${item.quantity}`
+                    ).join(', ');
+                    orderDetails = `
+                        <h3 class="font-semibold mt-2">Заказ из корзины</h3>
+                        <p class="text-xs text-gray-500">${itemsList}</p>
+                        ${order.comment ? `<p class="text-xs text-gray-400 mt-1">💬 ${order.comment}</p>` : ''}
+                    `;
                 } else {
-                    formatsText = 'Не указано';
+                    // Show old-style order
+                    let formatsText = '';
+                    if (Array.isArray(order.formats)) {
+                        formatsText = order.formats.join(', ');
+                    } else if (typeof order.formats === 'string') {
+                        try {
+                            const parsed = JSON.parse(order.formats);
+                            formatsText = Array.isArray(parsed) ? parsed.join(', ') : order.formats;
+                        } catch {
+                            formatsText = order.formats;
+                        }
+                    } else {
+                        formatsText = 'Не указано';
+                    }
+                    orderDetails = `
+                        <h3 class="font-semibold mt-2">${order.service || 'Услуга'}</h3>
+                        <p class="text-xs text-gray-500">${order.niche || ''} • ${formatsText}</p>
+                    `;
                 }
 
                 return `
                     <div class="card rounded-2xl p-4 border-l-4 ${borderClass}">
                         <div class="flex justify-between items-start mb-3">
-                            <div>
+                            <div class="flex-1">
                                 <span class="text-xs px-2 py-0.5 rounded-full ${statusClass} font-medium">${statusText}</span>
-                                <h3 class="font-semibold mt-2">${order.service || 'Услуга'}</h3>
-                                <p class="text-xs text-gray-500">${order.niche || ''} • ${formatsText}</p>
+                                ${orderDetails}
                             </div>
                             <div class="text-right">
                                 <span class="text-lg font-bold">$${(order.total || 0).toFixed(2)}</span>
-                                <p class="text-xs text-green-600">+$${(order.cashbackEarned || 0).toFixed(2)} кешбэк</p>
+                                ${order.cashbackEarned ? `<p class="text-xs text-green-600">+$${(order.cashbackEarned || 0).toFixed(2)} кешбэк</p>` : ''}
                             </div>
                         </div>
                         ${order.status === 'completed' ? `
@@ -1785,8 +1862,209 @@
                 loadAppSettings()
             ]);
 
+            // Render catalog
+            renderCatalog();
+
+            // Load cart from localStorage
+            const savedCart = localStorage.getItem('whiteagency_cart');
+            if (savedCart) {
+                state.cart = JSON.parse(savedCart);
+                updateCartBadge();
+            }
+
             document.getElementById('loadingScreen').style.display = 'none';
             state.isLoading = false;
+        }
+
+        // ==================== CATALOG & CART ====================
+
+        function renderCatalog() {
+            const container = document.getElementById('catalogProducts');
+            const products = CONFIG.PRICES;
+
+            container.innerHTML = products.map((product, index) => {
+                const icons = ['🎨', '🎬', '🎥', '🗣️', '🤖', '📹', '✨', '💻'];
+                const icon = icons[index] || '🎨';
+
+                return `
+                    <div class="card rounded-2xl p-4 hover:shadow-lg transition-shadow">
+                        <div class="flex gap-4">
+                            <div class="w-16 h-16 bg-gradient-to-br from-gray-800 to-black rounded-xl flex items-center justify-center text-3xl flex-shrink-0">
+                                ${icon}
+                            </div>
+                            <div class="flex-1">
+                                <h3 class="font-semibold text-base mb-1">${product.name}</h3>
+                                <p class="text-xs text-gray-500 mb-2">${product.desc}</p>
+                                <div class="flex items-center justify-between">
+                                    <span class="text-2xl font-bold">$${product.price}</span>
+                                    <button onclick="addToCart(${index})" class="px-4 py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors">
+                                        + В корзину
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function addToCart(productIndex) {
+            const product = CONFIG.PRICES[productIndex];
+            const existingItem = state.cart.find(item => item.productId === productIndex);
+
+            if (existingItem) {
+                existingItem.quantity++;
+            } else {
+                state.cart.push({
+                    productId: productIndex,
+                    name: product.name,
+                    desc: product.desc,
+                    price: product.price,
+                    quantity: 1
+                });
+            }
+
+            saveCart();
+            updateCartBadge();
+            showToast(`${product.name} добавлен в корзину`);
+        }
+
+        function removeFromCart(productId) {
+            state.cart = state.cart.filter(item => item.productId !== productId);
+            saveCart();
+            updateCartBadge();
+            renderCart();
+        }
+
+        function updateCartQuantity(productId, delta) {
+            const item = state.cart.find(i => i.productId === productId);
+            if (!item) return;
+
+            item.quantity += delta;
+            if (item.quantity <= 0) {
+                removeFromCart(productId);
+            } else {
+                saveCart();
+                renderCart();
+            }
+        }
+
+        function saveCart() {
+            localStorage.setItem('whiteagency_cart', JSON.stringify(state.cart));
+        }
+
+        function updateCartBadge() {
+            const badge = document.getElementById('cartBadge');
+            const totalItems = state.cart.reduce((sum, item) => sum + item.quantity, 0);
+
+            if (totalItems > 0) {
+                badge.textContent = totalItems;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+
+        function showCart() {
+            renderCart();
+            showModal('cartModal');
+        }
+
+        function renderCart() {
+            const container = document.getElementById('cartItems');
+            const emptyState = document.getElementById('cartEmpty');
+            const summary = document.getElementById('cartSummary');
+
+            if (state.cart.length === 0) {
+                container.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                summary.classList.add('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            summary.classList.remove('hidden');
+
+            container.innerHTML = state.cart.map(item => `
+                <div class="card rounded-xl p-4">
+                    <div class="flex items-start gap-3">
+                        <div class="flex-1">
+                            <h3 class="font-medium text-sm mb-1">${item.name}</h3>
+                            <p class="text-xs text-gray-500 mb-2">${item.desc}</p>
+                            <div class="flex items-center justify-between">
+                                <span class="text-lg font-bold">$${(item.price * item.quantity).toFixed(2)}</span>
+                                <div class="flex items-center gap-2">
+                                    <button onclick="updateCartQuantity(${item.productId}, -1)" class="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center hover:bg-gray-300 transition-colors">
+                                        −
+                                    </button>
+                                    <span class="w-8 text-center font-medium">${item.quantity}</span>
+                                    <button onclick="updateCartQuantity(${item.productId}, 1)" class="w-8 h-8 bg-black text-white rounded-lg flex items-center justify-center hover:bg-gray-800 transition-colors">
+                                        +
+                                    </button>
+                                    <button onclick="removeFromCart(${item.productId})" class="ml-2 w-8 h-8 bg-red-100 text-red-600 rounded-lg flex items-center justify-center hover:bg-red-200 transition-colors" title="Удалить">
+                                        ×
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            const totalItems = state.cart.reduce((sum, item) => sum + item.quantity, 0);
+            const totalPrice = state.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+            document.getElementById('cartItemCount').textContent = totalItems;
+            document.getElementById('cartTotal').textContent = `$${totalPrice.toFixed(2)}`;
+        }
+
+        async function sendCartToManager() {
+            if (state.cart.length === 0) {
+                showToast('Корзина пуста');
+                return;
+            }
+
+            const comment = document.getElementById('cartComment').value.trim();
+            const items = state.cart.map(item => ({
+                name: item.name,
+                price: item.price,
+                quantity: item.quantity,
+                total: item.price * item.quantity
+            }));
+
+            const totalPrice = state.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+            const orderData = {
+                id: 'ORD' + Date.now(),
+                user_id: state.user?.id,
+                items: items,
+                comment: comment,
+                total: totalPrice,
+                status: 'awaiting_manager',
+                created_at: new Date().toISOString()
+            };
+
+            try {
+                // Send to server
+                if (CONFIG.API_URL) {
+                    await apiRequest('/api/cart-orders', 'POST', orderData);
+                }
+
+                // Clear cart
+                state.cart = [];
+                saveCart();
+                updateCartBadge();
+
+                closeModal();
+                showToast('✅ Заказ отправлен менеджеру!');
+
+                // Reload user data to update orders list
+                await loadUserData();
+
+            } catch (error) {
+                console.error('Error sending cart order:', error);
+                showToast('❌ Ошибка отправки заказа');
+            }
         }
 
         document.addEventListener('keydown', (e) => {
