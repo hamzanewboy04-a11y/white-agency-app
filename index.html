@@ -482,6 +482,20 @@
                     <span class="text-sm">Кешбэк списан</span>
                     <span class="font-medium" id="cashbackAmount">-$0.00</span>
                 </div>
+                <div class="border-t pt-3">
+                    <div class="flex gap-2 mb-2">
+                        <input type="text" id="promoCodeInput" placeholder="Промокод"
+                            class="flex-1 px-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black uppercase"
+                            onkeyup="this.value = this.value.toUpperCase()">
+                        <button onclick="applyPromoCode()" class="px-4 py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition">
+                            Применить
+                        </button>
+                    </div>
+                    <div id="promoApplied" class="hidden flex justify-between items-center text-blue-600 text-sm">
+                        <span>Промокод <span id="appliedPromoCode"></span></span>
+                        <span class="font-medium" id="promoDiscount">-$0.00</span>
+                    </div>
+                </div>
                 <div class="border-t pt-3 flex justify-between items-center">
                     <span class="font-semibold">Итого к оплате</span>
                     <span class="text-xl font-bold" id="orderTotal">$9.50</span>
@@ -1334,6 +1348,7 @@
         // ==================== ORDER FORM ====================
         let selectedFormats = [];
         let uploadedFiles = [];
+        let appliedPromo = null; // {code: 'SUMMER', discount: 10}
 
         function toggleFormat(btn) {
             const format = btn.textContent;
@@ -1417,30 +1432,74 @@
             const level = CONFIG.LEVELS[state.user?.level] || CONFIG.LEVELS.none;
             const discount = level.discount;
             const discountAmount = basePrice * (discount / 100);
-            const afterDiscount = basePrice - discountAmount;
-            
+            let afterDiscount = basePrice - discountAmount;
+
+            // Apply promo code
+            let promoDiscountAmount = 0;
+            if (appliedPromo) {
+                promoDiscountAmount = afterDiscount * (appliedPromo.discount / 100);
+                afterDiscount -= promoDiscountAmount;
+            }
+
             let cashbackUsed = 0;
             const useCashback = document.getElementById('useCashback').checked;
             if (useCashback && state.user) {
                 const maxCashback = afterDiscount * CONFIG.MAX_CASHBACK_USAGE;
                 cashbackUsed = Math.min(state.user.cashback, maxCashback);
             }
-            
+
             const total = afterDiscount - cashbackUsed;
             const earnedCashback = total * (CONFIG.CASHBACK_PERCENT / 100);
-            
+
             document.getElementById('orderPrice').textContent = `$${basePrice.toFixed(2)}`;
             document.getElementById('discountLevel').textContent = state.user?.level || 'New';
             document.getElementById('discountPercent').textContent = discount;
             document.getElementById('orderDiscount').textContent = `-$${discountAmount.toFixed(2)}`;
             document.getElementById('orderTotal').textContent = `$${total.toFixed(2)}`;
             document.getElementById('orderCashback').textContent = `+$${earnedCashback.toFixed(2)}`;
-            
+
             if (useCashback && cashbackUsed > 0) {
                 document.getElementById('cashbackApplied').classList.remove('hidden');
                 document.getElementById('cashbackAmount').textContent = `-$${cashbackUsed.toFixed(2)}`;
             } else {
                 document.getElementById('cashbackApplied').classList.add('hidden');
+            }
+
+            // Show promo discount if applied
+            if (appliedPromo) {
+                document.getElementById('promoApplied').classList.remove('hidden');
+                document.getElementById('appliedPromoCode').textContent = appliedPromo.code;
+                document.getElementById('promoDiscount').textContent = `-$${promoDiscountAmount.toFixed(2)}`;
+            } else {
+                document.getElementById('promoApplied').classList.add('hidden');
+            }
+        }
+
+        async function applyPromoCode() {
+            const code = document.getElementById('promoCodeInput').value.trim().toUpperCase();
+
+            if (!code) {
+                showToast('Введите промокод');
+                return;
+            }
+
+            try {
+                showToast('Проверка промокода...');
+                const result = await apiRequest(`/api/promo/${code}`);
+
+                if (result && result.valid) {
+                    appliedPromo = {
+                        code: result.code,
+                        discount: result.discount
+                    };
+                    showToast(`✅ Промокод активирован! Скидка ${result.discount}%`);
+                    updatePrice();
+                } else {
+                    showToast(`❌ ${result.error || 'Промокод не действителен'}`);
+                }
+            } catch (error) {
+                console.error('Promo check error:', error);
+                showToast('❌ Ошибка проверки промокода');
             }
         }
 
@@ -1449,17 +1508,24 @@
             const basePrice = parseFloat(serviceSelect.value);
             const level = CONFIG.LEVELS[state.user?.level] || CONFIG.LEVELS.none;
             const discountAmount = basePrice * (level.discount / 100);
-            const afterDiscount = basePrice - discountAmount;
-            
+            let afterDiscount = basePrice - discountAmount;
+
+            // Apply promo code
+            let promoDiscountAmount = 0;
+            if (appliedPromo) {
+                promoDiscountAmount = afterDiscount * (appliedPromo.discount / 100);
+                afterDiscount -= promoDiscountAmount;
+            }
+
             let cashbackUsed = 0;
             if (document.getElementById('useCashback').checked) {
                 const maxCashback = afterDiscount * CONFIG.MAX_CASHBACK_USAGE;
                 cashbackUsed = Math.min(state.user.cashback, maxCashback);
             }
-            
+
             const total = afterDiscount - cashbackUsed;
             const cashbackEarned = total * (CONFIG.CASHBACK_PERCENT / 100);
-            
+
             const order = {
                 id: 'ORD' + Date.now(),
                 service: serviceSelect.options[serviceSelect.selectedIndex].text.split('(')[0].trim(),
@@ -1470,6 +1536,8 @@
                 media: uploadedFiles, // Array of uploaded files with base64 data
                 basePrice,
                 discount: discountAmount,
+                promoCode: appliedPromo ? appliedPromo.code : null,
+                promoDiscount: promoDiscountAmount,
                 cashbackUsed,
                 total,
                 cashbackEarned,
@@ -1477,7 +1545,7 @@
                 reviewed: false,
                 createdAt: new Date().toISOString()
             };
-            
+
             closeModal();
             setTimeout(() => {
                 showPayment(total, order);
@@ -1828,6 +1896,17 @@
                 apiRequest('/api/orders', 'POST', pendingOrder).catch(err => {
                     console.error('Failed to send order to server:', err);
                 });
+
+                // Apply promo code usage
+                if (pendingOrder.promoCode) {
+                    apiRequest('/api/promo/apply', 'POST', {
+                        code: pendingOrder.promoCode,
+                        user_id: state.user.id,
+                        order_id: pendingOrder.id
+                    }).catch(err => {
+                        console.error('Failed to apply promo:', err);
+                    });
+                }
             }
 
             state.user.orders.push(pendingOrder);
