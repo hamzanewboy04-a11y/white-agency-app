@@ -8,25 +8,22 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     * { font-family: 'Inter', sans-serif; }
-    .glass { background: rgba(255,255,255,0.03); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.08); }
-    .status-pending { background: #525252; color: #fff; }
-    .status-working { background: #a3a3a3; color: #000; }
-    .status-completed { background: #ffffff; color: #000; }
-    .status-cancelled { background: #374151; color: #9ca3af; }
-    .tab-active { background: #ffffff; color: #000; }
+    .glass { background: rgba(255,255,255,0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+    .status-pending { background: #fbbf24; color: #000; }
+    .status-working { background: #6b7280; color: #fff; }
+    .status-completed { background: #10b981; color: #fff; }
+    .status-cancelled { background: #ef4444; color: #fff; }
+    .tab-active { background: #fff; color: #000; }
     .notification-badge { animation: pulse 2s infinite; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-    .order-card:hover { transform: translateY(-2px); box-shadow: 0 10px 40px rgba(255, 255, 255, 0.05); }
+    .order-card:hover { transform: translateY(-2px); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4); }
     .fade-in { animation: fadeIn 0.3s ease-out; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-    .btn-primary { background: #ffffff; color: #000; }
-    .btn-primary:hover { background: #e5e5e5; }
-    .btn-secondary { background: #404040; color: #fff; }
-    .btn-secondary:hover { background: #525252; }
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #171717; }
-    ::-webkit-scrollbar-thumb { background: #404040; border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background: #525252; }
+    .stat-card { transition: all 0.3s ease; }
+    .stat-card:hover { background: rgba(255,255,255,0.08); }
+    .nav-btn { transition: all 0.2s ease; }
+    .nav-btn:hover { background: rgba(255,255,255,0.1); }
+    .nav-btn.active { background: #fff; color: #000; }
   </style>
 </head>
 <body class="bg-black text-white min-h-screen">
@@ -34,26 +31,24 @@
   <div id="loginScreen" class="min-h-screen flex items-center justify-center p-4">
     <div class="glass rounded-2xl p-8 w-full max-w-md">
       <div class="text-center mb-8">
-        <div class="text-4xl mb-4">🔐</div>
-        <h1 class="text-2xl font-bold text-white">
-          White Agency Admin
-        </h1>
+        <div class="text-4xl mb-4">⚡</div>
+        <h1 class="text-2xl font-bold tracking-tight">WHITE AGENCY</h1>
         <p class="text-gray-500 mt-2">Введите данные для входа</p>
       </div>
       
       <div class="space-y-4">
         <div>
-          <label class="block text-sm text-gray-400 mb-2">API URL</label>
+          <label class="block text-sm text-gray-500 mb-2">API URL</label>
           <input type="text" id="apiUrl" placeholder="https://your-api.railway.app" 
-            class="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-4 py-3 focus:outline-none focus:border-white transition">
+            class="w-full bg-gray-900/50 border border-gray-800 rounded-xl px-4 py-3 focus:outline-none focus:border-white transition">
         </div>
         <div>
-          <label class="block text-sm text-gray-400 mb-2">Admin Key</label>
+          <label class="block text-sm text-gray-500 mb-2">Admin Key</label>
           <input type="password" id="adminKey" placeholder="Ваш ADMIN_KEY из .env" 
-            class="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-4 py-3 focus:outline-none focus:border-white transition">
+            class="w-full bg-gray-900/50 border border-gray-800 rounded-xl px-4 py-3 focus:outline-none focus:border-white transition">
         </div>
         <button onclick="login()" 
-          class="w-full btn-primary py-3 rounded-xl font-semibold transition-all">
+          class="w-full bg-white text-black hover:bg-gray-200 py-3 rounded-xl font-semibold transition">
           Войти
         </button>
         <p id="loginError" class="text-red-400 text-center text-sm hidden"></p>
@@ -64,21 +59,21 @@
   <!-- Main Admin Panel -->
   <div id="adminPanel" class="hidden">
     <!-- Header -->
-    <header class="glass sticky top-0 z-50 border-b border-neutral-800">
+    <header class="glass sticky top-0 z-50 border-b border-gray-800/50">
       <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
         <div class="flex items-center gap-3">
-          <span class="text-2xl">⚡</span>
-          <h1 class="text-xl font-bold">White Agency</h1>
-          <span class="text-xs px-2 py-1 bg-white text-black rounded-full font-medium">ADMIN</span>
+          <span class="text-xl">⚡</span>
+          <h1 class="text-lg font-bold tracking-tight">WHITE AGENCY</h1>
+          <span class="text-[10px] px-2 py-0.5 bg-white text-black rounded-full font-medium">ADMIN</span>
         </div>
         <div class="flex items-center gap-4">
-          <div id="connectionStatus" class="flex items-center gap-2 text-sm">
+          <div id="connectionStatus" class="flex items-center gap-2 text-xs">
             <span class="w-2 h-2 bg-white rounded-full"></span>
-            <span class="text-gray-400">Подключено</span>
+            <span class="text-gray-500">Подключено</span>
           </div>
-          <button onclick="logout()" class="text-gray-400 hover:text-white transition">
+          <button onclick="logout()" class="text-gray-500 hover:text-white transition">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
             </svg>
           </button>
         </div>
@@ -87,52 +82,47 @@
 
     <!-- Stats Bar -->
     <div class="max-w-7xl mx-auto px-4 py-6">
-      <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div class="glass rounded-xl p-4">
-          <div class="text-2xl mb-1">📦</div>
-          <div class="text-2xl font-bold" id="statOrders">0</div>
-          <div class="text-sm text-gray-500">Всего заказов</div>
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div class="glass rounded-xl p-4 stat-card cursor-default">
+          <div class="text-gray-500 text-xs mb-1">Всего заказов</div>
+          <div class="text-2xl font-bold" id="statOrders">—</div>
         </div>
-        <div class="glass rounded-xl p-4">
-          <div class="text-2xl mb-1">⏳</div>
-          <div class="text-2xl font-bold text-gray-400" id="statPending">0</div>
-          <div class="text-sm text-gray-500">Ожидают</div>
+        <div class="glass rounded-xl p-4 stat-card cursor-default">
+          <div class="text-gray-500 text-xs mb-1">Ожидают</div>
+          <div class="text-2xl font-bold text-gray-400" id="statPending">—</div>
         </div>
-        <div class="glass rounded-xl p-4">
-          <div class="text-2xl mb-1">🎨</div>
-          <div class="text-2xl font-bold text-gray-300" id="statWorking">0</div>
-          <div class="text-sm text-gray-500">В работе</div>
+        <div class="glass rounded-xl p-4 stat-card cursor-default">
+          <div class="text-gray-500 text-xs mb-1">В работе</div>
+          <div class="text-2xl font-bold text-gray-300" id="statWorking">—</div>
         </div>
-        <div class="glass rounded-xl p-4">
-          <div class="text-2xl mb-1">👥</div>
-          <div class="text-2xl font-bold text-gray-200" id="statUsers">0</div>
-          <div class="text-sm text-gray-500">Пользователей</div>
+        <div class="glass rounded-xl p-4 stat-card cursor-default">
+          <div class="text-gray-500 text-xs mb-1">Пользователей</div>
+          <div class="text-2xl font-bold text-gray-400" id="statUsers">—</div>
         </div>
-        <div class="glass rounded-xl p-4">
-          <div class="text-2xl mb-1">💰</div>
-          <div class="text-2xl font-bold text-white" id="statRevenue">$0</div>
-          <div class="text-sm text-gray-500">Доход</div>
+        <div class="glass rounded-xl p-4 stat-card cursor-default">
+          <div class="text-gray-500 text-xs mb-1">Доход</div>
+          <div class="text-2xl font-bold text-white" id="statRevenue">—</div>
         </div>
       </div>
     </div>
 
     <!-- Tabs -->
     <div class="max-w-7xl mx-auto px-4">
-      <div class="flex gap-2 overflow-x-auto pb-2">
-        <button onclick="switchTab('orders')" class="tab-btn tab-active px-4 py-2 rounded-lg whitespace-nowrap transition font-medium" data-tab="orders">
-          📦 Заказы
+      <div class="flex gap-1 overflow-x-auto pb-2">
+        <button onclick="switchTab('orders')" class="nav-btn active px-4 py-2 rounded-lg whitespace-nowrap text-sm font-medium" data-tab="orders">
+          Заказы
         </button>
-        <button onclick="switchTab('users')" class="tab-btn px-4 py-2 rounded-lg whitespace-nowrap transition bg-neutral-800 text-gray-300" data-tab="users">
-          👥 Пользователи
+        <button onclick="switchTab('users')" class="nav-btn px-4 py-2 rounded-lg whitespace-nowrap text-sm font-medium" data-tab="users">
+          Пользователи
         </button>
-        <button onclick="switchTab('referrals')" class="tab-btn px-4 py-2 rounded-lg whitespace-nowrap transition bg-neutral-800 text-gray-300" data-tab="referrals">
-          🔗 Рефералы
+        <button onclick="switchTab('referrals')" class="nav-btn px-4 py-2 rounded-lg whitespace-nowrap text-sm font-medium" data-tab="referrals">
+          Рефералы
         </button>
-        <button onclick="switchTab('notifications')" class="tab-btn px-4 py-2 rounded-lg whitespace-nowrap transition bg-neutral-800 text-gray-300" data-tab="notifications">
-          🔔 Уведомления
+        <button onclick="switchTab('notifications')" class="nav-btn px-4 py-2 rounded-lg whitespace-nowrap text-sm font-medium" data-tab="notifications">
+          Уведомления
         </button>
-        <button onclick="switchTab('settings')" class="tab-btn px-4 py-2 rounded-lg whitespace-nowrap transition bg-neutral-800 text-gray-300" data-tab="settings">
-          ⚙️ Настройки
+        <button onclick="switchTab('settings')" class="nav-btn px-4 py-2 rounded-lg whitespace-nowrap text-sm font-medium" data-tab="settings">
+          Настройки
         </button>
       </div>
     </div>
@@ -142,55 +132,57 @@
       <!-- Orders Tab -->
       <div id="ordersTab" class="tab-content">
         <!-- Filters -->
-        <div class="glass rounded-xl p-4 mb-6 flex flex-wrap gap-4 items-center">
+        <div class="glass rounded-xl p-4 mb-6 flex flex-wrap gap-3 items-center">
           <div class="flex-1 min-w-[200px]">
-            <input type="text" id="orderSearch" placeholder="🔍 Поиск по ID или клиенту..." 
-              class="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-4 py-2 focus:outline-none focus:border-white transition"
+            <input type="text" id="orderSearch" placeholder="Поиск по ID или клиенту..." 
+              class="w-full bg-gray-900/50 border border-gray-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-white transition"
               oninput="filterOrders()">
           </div>
-          <select id="orderStatusFilter" class="bg-neutral-900 border border-neutral-700 rounded-lg px-4 py-2 focus:outline-none focus:border-white transition" onchange="filterOrders()">
+          <select id="orderStatusFilter" class="bg-gray-900/50 border border-gray-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-white" onchange="filterOrders()">
             <option value="">Все статусы</option>
-            <option value="pending">⏳ Ожидает</option>
-            <option value="working">🎨 В работе</option>
-            <option value="completed">✅ Завершён</option>
-            <option value="cancelled">❌ Отменён</option>
+            <option value="pending">Ожидает</option>
+            <option value="working">В работе</option>
+            <option value="completed">Готов</option>
+            <option value="cancelled">Отменён</option>
           </select>
-          <button onclick="loadOrders()" class="btn-secondary px-4 py-2 rounded-lg transition">
-            🔄 Обновить
+          <button onclick="loadOrders()" class="bg-white text-black hover:bg-gray-200 px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            Обновить
           </button>
         </div>
 
         <!-- Orders List -->
-        <div id="ordersList" class="space-y-4">
-          <div class="text-center text-gray-500 py-8">Загрузка заказов...</div>
+        <div id="ordersList" class="space-y-3">
+          <div class="text-center text-gray-500 py-12">Загрузка заказов...</div>
         </div>
       </div>
 
       <!-- Users Tab -->
       <div id="usersTab" class="tab-content hidden">
-        <div class="glass rounded-xl p-4 mb-6 flex gap-4 items-center">
-          <input type="text" id="userSearch" placeholder="🔍 Поиск по имени или username..." 
-            class="flex-1 bg-neutral-900 border border-neutral-700 rounded-lg px-4 py-2 focus:outline-none focus:border-white transition"
+        <div class="glass rounded-xl p-4 mb-6 flex gap-3 items-center">
+          <input type="text" id="userSearch" placeholder="Поиск по имени или username..." 
+            class="flex-1 bg-gray-900/50 border border-gray-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-white transition"
             oninput="filterUsers()">
-          <button onclick="loadUsers()" class="btn-secondary px-4 py-2 rounded-lg transition">
-            🔄 Обновить
+          <button onclick="loadUsers()" class="bg-white text-black hover:bg-gray-200 px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            Обновить
           </button>
         </div>
-        <div id="usersList" class="grid gap-4">
-          <div class="text-center text-gray-500 py-8">Загрузка пользователей...</div>
+        <div id="usersList" class="grid gap-3">
+          <div class="text-center text-gray-500 py-12">Загрузка пользователей...</div>
         </div>
       </div>
 
       <!-- Referrals Tab -->
       <div id="referralsTab" class="tab-content hidden">
         <div class="glass rounded-xl p-4 mb-6">
-          <h3 class="font-semibold mb-4">💸 Ожидающие выплаты</h3>
+          <h3 class="font-medium mb-4 text-gray-400 text-sm uppercase tracking-wide">Ожидающие выплаты</h3>
           <div id="pendingPayouts" class="space-y-3">
             <div class="text-center text-gray-500 py-4">Загрузка...</div>
           </div>
         </div>
         <div class="glass rounded-xl p-4">
-          <h3 class="font-semibold mb-4">📊 Все рефералы</h3>
+          <h3 class="font-medium mb-4 text-gray-400 text-sm uppercase tracking-wide">Все рефералы</h3>
           <div id="referralsList" class="space-y-3">
             <div class="text-center text-gray-500 py-4">Загрузка...</div>
           </div>
@@ -200,38 +192,38 @@
       <!-- Notifications Tab -->
       <div id="notificationsTab" class="tab-content hidden">
         <div class="glass rounded-xl p-6 mb-6">
-          <h3 class="font-semibold mb-4">📤 Отправить уведомление</h3>
+          <h3 class="font-medium mb-4 text-gray-400 text-sm uppercase tracking-wide">Отправить уведомление</h3>
           <div class="space-y-4">
             <div>
-              <label class="block text-sm text-gray-400 mb-2">Получатель</label>
-              <select id="notifRecipient" class="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-4 py-2 focus:outline-none focus:border-white transition">
-                <option value="all">📢 Все пользователи</option>
+              <label class="block text-xs text-gray-500 mb-2 uppercase tracking-wide">Получатель</label>
+              <select id="notifRecipient" class="w-full bg-gray-900/50 border border-gray-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-white">
+                <option value="all">Все пользователи</option>
               </select>
             </div>
             <div>
-              <label class="block text-sm text-gray-400 mb-2">Заголовок</label>
-              <input type="text" id="notifTitle" placeholder="Например: 🎉 Акция!" 
-                class="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-4 py-2 focus:outline-none focus:border-white transition">
+              <label class="block text-xs text-gray-500 mb-2 uppercase tracking-wide">Заголовок</label>
+              <input type="text" id="notifTitle" placeholder="Например: Новость" 
+                class="w-full bg-gray-900/50 border border-gray-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-white transition">
             </div>
             <div>
-              <label class="block text-sm text-gray-400 mb-2">Сообщение</label>
+              <label class="block text-xs text-gray-500 mb-2 uppercase tracking-wide">Сообщение</label>
               <textarea id="notifMessage" rows="3" placeholder="Текст уведомления..." 
-                class="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-4 py-2 focus:outline-none focus:border-white transition"></textarea>
+                class="w-full bg-gray-900/50 border border-gray-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-white transition"></textarea>
             </div>
             <div class="flex items-center gap-4">
               <label class="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" id="sendTelegram" checked class="w-4 h-4 accent-white">
-                <span class="text-sm">Отправить в Telegram</span>
+                <span class="text-sm text-gray-400">Отправить в Telegram</span>
               </label>
             </div>
-            <button onclick="sendNotification()" class="w-full btn-primary py-3 rounded-xl font-semibold transition">
-              📤 Отправить
+            <button onclick="sendNotification()" class="w-full bg-white text-black hover:bg-gray-200 py-3 rounded-xl font-medium transition">
+              Отправить
             </button>
           </div>
         </div>
 
         <div class="glass rounded-xl p-6">
-          <h3 class="font-semibold mb-4">📜 История уведомлений</h3>
+          <h3 class="font-medium mb-4 text-gray-400 text-sm uppercase tracking-wide">История уведомлений</h3>
           <div id="notificationsHistory" class="space-y-3">
             <div class="text-center text-gray-500 py-4">История уведомлений будет здесь</div>
           </div>
@@ -242,174 +234,46 @@
       <div id="settingsTab" class="tab-content hidden">
         <div class="grid md:grid-cols-2 gap-6">
           <div class="glass rounded-xl p-6">
-            <h3 class="font-semibold mb-4">🔧 Настройки API</h3>
+            <h3 class="font-medium mb-4 text-gray-400 text-sm uppercase tracking-wide">Настройки API</h3>
             <div class="space-y-4">
               <div>
-                <label class="block text-sm text-gray-400 mb-2">API URL</label>
+                <label class="block text-xs text-gray-500 mb-2 uppercase tracking-wide">API URL</label>
                 <input type="text" id="settingsApiUrl" 
-                  class="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-4 py-2 focus:outline-none focus:border-white transition">
+                  class="w-full bg-gray-900/50 border border-gray-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-white transition">
               </div>
               <div>
-                <label class="block text-sm text-gray-400 mb-2">Admin Key</label>
+                <label class="block text-xs text-gray-500 mb-2 uppercase tracking-wide">Admin Key</label>
                 <input type="password" id="settingsAdminKey" 
-                  class="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-4 py-2 focus:outline-none focus:border-white transition">
+                  class="w-full bg-gray-900/50 border border-gray-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-white transition">
               </div>
-              <button onclick="saveSettings()" class="btn-secondary px-4 py-2 rounded-lg transition">
-                💾 Сохранить
+              <button onclick="saveSettings()" class="bg-white text-black hover:bg-gray-200 px-4 py-2 rounded-lg text-sm font-medium transition">
+                Сохранить
               </button>
             </div>
           </div>
 
           <div class="glass rounded-xl p-6">
-            <h3 class="font-semibold mb-4">📊 Быстрые действия</h3>
-            <div class="space-y-3">
-              <button onclick="exportOrders()" class="w-full bg-neutral-800 hover:bg-neutral-700 px-4 py-3 rounded-lg transition text-left flex items-center gap-3">
-                <span>📥</span> Экспорт заказов в CSV
+            <h3 class="font-medium mb-4 text-gray-400 text-sm uppercase tracking-wide">Быстрые действия</h3>
+            <div class="space-y-2">
+              <button onclick="exportOrders()" class="w-full bg-gray-900/50 hover:bg-gray-800 px-4 py-3 rounded-lg transition text-left text-sm flex items-center gap-3">
+                <span class="text-gray-400">↓</span> Экспорт заказов в CSV
               </button>
-              <button onclick="exportUsers()" class="w-full bg-neutral-800 hover:bg-neutral-700 px-4 py-3 rounded-lg transition text-left flex items-center gap-3">
-                <span>📥</span> Экспорт пользователей в CSV
+              <button onclick="exportUsers()" class="w-full bg-gray-900/50 hover:bg-gray-800 px-4 py-3 rounded-lg transition text-left text-sm flex items-center gap-3">
+                <span class="text-gray-400">↓</span> Экспорт пользователей в CSV
               </button>
-              <button onclick="refreshAllData()" class="w-full bg-neutral-800 hover:bg-neutral-700 px-4 py-3 rounded-lg transition text-left flex items-center gap-3">
-                <span>🔄</span> Обновить все данные
+              <button onclick="refreshAllData()" class="w-full bg-gray-900/50 hover:bg-gray-800 px-4 py-3 rounded-lg transition text-left text-sm flex items-center gap-3">
+                <span class="text-gray-400">↻</span> Обновить все данные
               </button>
             </div>
           </div>
 
           <div class="glass rounded-xl p-6 md:col-span-2">
-            <h3 class="font-semibold mb-4">📝 Добавить в ваш server.js</h3>
-            <p class="text-gray-400 text-sm mb-4">Добавьте эти эндпоинты в ваш бэкенд для полной работы админки:</p>
-            <pre class="bg-black rounded-lg p-4 text-xs overflow-x-auto text-gray-300 border border-neutral-800"><code>// Получить все заказы (для админки)
-app.get('/api/admin/orders', (req, res) => {
-  const adminKey = req.headers['x-admin-key'];
-  if (adminKey !== process.env.ADMIN_KEY) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  
-  const orders = db.prepare(`
-    SELECT o.*, u.name as user_name, u.username, u.telegram_id
-    FROM orders o
-    LEFT JOIN users u ON o.user_id = u.id
-    ORDER BY o.created_at DESC
-  `).all();
-  
-  res.json(orders);
-});
-
-// Получить всех пользователей (для админки)
-app.get('/api/admin/users', (req, res) => {
-  const adminKey = req.headers['x-admin-key'];
-  if (adminKey !== process.env.ADMIN_KEY) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  
-  const users = db.prepare('SELECT * FROM users ORDER BY created_at DESC').all();
-  res.json(users);
-});
-
-// Получить рефералов с выплатами (для админки)
-app.get('/api/admin/referrals', (req, res) => {
-  const adminKey = req.headers['x-admin-key'];
-  if (adminKey !== process.env.ADMIN_KEY) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  
-  const referrals = db.prepare(`
-    SELECT r.*, 
-      u1.name as referrer_name, u1.username as referrer_username, u1.trc20_wallet,
-      u2.name as referred_name, u2.username as referred_username
-    FROM referrals r
-    JOIN users u1 ON r.referrer_id = u1.id
-    JOIN users u2 ON r.referred_id = u2.id
-    ORDER BY r.created_at DESC
-  `).all();
-  
-  res.json(referrals);
-});
-
-// Обновить статус заказа (исправленный)
-app.post('/api/admin/orders/:orderId/status', (req, res) => {
-  const adminKey = req.headers['x-admin-key'];
-  if (adminKey !== process.env.ADMIN_KEY) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  
-  const { orderId } = req.params;
-  const { status } = req.body;
-  
-  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
-  if (!order) {
-    return res.status(404).json({ error: 'Order not found' });
-  }
-  
-  db.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, orderId);
-  notifyOrderStatus(order.user_id, orderId, status);
-  
-  res.json({ success: true });
-});
-
-// Отправить уведомление пользователю
-app.post('/api/admin/notify', async (req, res) => {
-  const adminKey = req.headers['x-admin-key'];
-  if (adminKey !== process.env.ADMIN_KEY) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  
-  const { userId, title, message, sendTelegram } = req.body;
-  
-  if (userId === 'all') {
-    const users = db.prepare('SELECT * FROM users').all();
-    for (const user of users) {
-      db.prepare('INSERT INTO notifications (user_id, title, message) VALUES (?, ?, ?)').run(user.id, title, message);
-      if (sendTelegram) {
-        await bot.telegram.sendMessage(user.telegram_id, `${title}\n\n${message}`).catch(() => {});
-      }
-    }
-  } else {
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
-    if (user) {
-      db.prepare('INSERT INTO notifications (user_id, title, message) VALUES (?, ?, ?)').run(userId, title, message);
-      if (sendTelegram) {
-        await bot.telegram.sendMessage(user.telegram_id, `${title}\n\n${message}`).catch(() => {});
-      }
-    }
-  }
-  
-  res.json({ success: true });
-});
-
-// Отправить сообщение пользователю по заказу
-app.post('/api/admin/orders/:orderId/message', async (req, res) => {
-  const adminKey = req.headers['x-admin-key'];
-  if (adminKey !== process.env.ADMIN_KEY) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  
-  const { orderId } = req.params;
-  const { message } = req.body;
-  
-  const order = db.prepare(`
-    SELECT o.*, u.telegram_id, u.name
-    FROM orders o
-    JOIN users u ON o.user_id = u.id
-    WHERE o.id = ?
-  `).get(orderId);
-  
-  if (!order) {
-    return res.status(404).json({ error: 'Order not found' });
-  }
-  
-  await bot.telegram.sendMessage(order.telegram_id, 
-    `💬 Сообщение по заказу #${orderId}\n\n${message}`
-  );
-  
-  db.prepare('INSERT INTO notifications (user_id, title, message) VALUES (?, ?, ?)').run(
-    order.user_id, 
-    `💬 Сообщение по заказу #${orderId}`, 
-    message
-  );
-  
-  res.json({ success: true });
-});</code></pre>
+            <h3 class="font-medium mb-4 text-gray-400 text-sm uppercase tracking-wide">Информация</h3>
+            <div class="bg-gray-900/50 rounded-lg p-4 text-sm text-gray-400">
+              <p class="mb-2">✅ Админ-панель успешно подключена к серверу</p>
+              <p class="mb-2">📊 Все эндпоинты уже добавлены в server.js</p>
+              <p>🔔 Уведомления отправляются в Telegram автоматически</p>
+            </div>
           </div>
         </div>
       </div>
@@ -418,10 +282,10 @@ app.post('/api/admin/orders/:orderId/message', async (req, res) => {
 
   <!-- Order Detail Modal -->
   <div id="orderModal" class="fixed inset-0 bg-black/90 z-50 hidden items-center justify-center p-4">
-    <div class="glass rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-      <div class="sticky top-0 bg-neutral-900 p-4 border-b border-neutral-700 flex items-center justify-between">
-        <h3 class="font-bold text-lg">📦 Детали заказа</h3>
-        <button onclick="closeOrderModal()" class="text-gray-400 hover:text-white text-xl">✕</button>
+    <div class="glass rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-gray-800">
+      <div class="sticky top-0 glass p-4 border-b border-gray-800 flex items-center justify-between">
+        <h3 class="font-medium">Детали заказа</h3>
+        <button onclick="closeOrderModal()" class="text-gray-500 hover:text-white">✕</button>
       </div>
       <div id="orderModalContent" class="p-6">
         <!-- Content loaded dynamically -->
@@ -463,7 +327,6 @@ app.post('/api/admin/orders/:orderId/message', async (req, res) => {
       adminKey = key;
       
       try {
-        // Test connection
         const response = await fetch(`${apiUrl}/health`);
         if (!response.ok) throw new Error('Server not responding');
         
@@ -527,9 +390,10 @@ app.post('/api/admin/orders/:orderId/message', async (req, res) => {
       } catch (error) {
         console.error('Error loading orders:', error);
         document.getElementById('ordersList').innerHTML = `
-          <div class="text-center text-red-400 py-8">
-            ❌ Не удалось загрузить заказы<br>
-            <small class="text-gray-600">Убедитесь, что добавили эндпоинт /api/admin/orders</small>
+          <div class="text-center text-gray-500 py-12">
+            <div class="text-2xl mb-2">⚠️</div>
+            Не удалось загрузить заказы<br>
+            <small class="text-gray-600">${error.message}</small>
           </div>`;
       }
     }
@@ -543,9 +407,10 @@ app.post('/api/admin/orders/:orderId/message', async (req, res) => {
       } catch (error) {
         console.error('Error loading users:', error);
         document.getElementById('usersList').innerHTML = `
-          <div class="text-center text-red-400 py-8">
-            ❌ Не удалось загрузить пользователей<br>
-            <small class="text-gray-600">Убедитесь, что добавили эндпоинт /api/admin/users</small>
+          <div class="text-center text-gray-500 py-12">
+            <div class="text-2xl mb-2">⚠️</div>
+            Не удалось загрузить пользователей<br>
+            <small class="text-gray-600">${error.message}</small>
           </div>`;
       }
     }
@@ -560,9 +425,9 @@ app.post('/api/admin/orders/:orderId/message', async (req, res) => {
     }
 
     async function refreshAllData() {
-      showToast('🔄 Обновление данных...', 'info');
+      showToast('Обновление данных...', 'info');
       await Promise.all([loadOrders(), loadUsers(), loadReferrals()]);
-      showToast('✅ Данные обновлены', 'success');
+      showToast('Данные обновлены', 'success');
     }
 
     // Render Functions
@@ -581,28 +446,28 @@ app.post('/api/admin/orders/:orderId/message', async (req, res) => {
       
       if (filtered.length === 0) {
         document.getElementById('ordersList').innerHTML = `
-          <div class="text-center text-gray-500 py-8">Заказы не найдены</div>`;
+          <div class="text-center text-gray-500 py-12">Заказы не найдены</div>`;
         return;
       }
       
       document.getElementById('ordersList').innerHTML = filtered.map(order => `
-        <div class="order-card glass rounded-xl p-4 transition cursor-pointer fade-in" onclick="openOrderModal('${order.id}')">
+        <div class="order-card glass rounded-xl p-4 transition cursor-pointer fade-in border border-gray-800/50 hover:border-gray-700" onclick="openOrderModal('${order.id}')">
           <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="flex-1">
+            <div class="flex-1 min-w-[200px]">
               <div class="flex items-center gap-3 mb-2">
-                <span class="font-mono text-gray-300">#${order.id}</span>
+                <span class="font-mono text-sm text-gray-400">#${order.id}</span>
                 <span class="status-${order.status} px-2 py-0.5 rounded-full text-xs font-medium">
                   ${getStatusText(order.status)}
                 </span>
               </div>
-              <div class="text-gray-500 text-sm space-y-1">
-                <div>👤 ${order.user_name || 'Неизвестно'} ${order.username ? `(@${order.username})` : ''}</div>
-                <div>📋 ${order.service} • ${order.niche}</div>
-                <div>📅 ${formatDate(order.created_at)}</div>
+              <div class="text-gray-400 text-sm space-y-1">
+                <div>${order.user_name || 'Неизвестно'} ${order.username ? `@${order.username}` : ''}</div>
+                <div class="text-gray-500">${order.service} · ${order.niche}</div>
+                <div class="text-gray-600">${formatDate(order.created_at)}</div>
               </div>
             </div>
             <div class="text-right">
-              <div class="text-xl font-bold text-white">$${order.total}</div>
+              <div class="text-xl font-medium">$${order.total}</div>
               <div class="text-xs text-gray-600">${order.payment_method || 'Не указано'}</div>
             </div>
           </div>
@@ -619,34 +484,39 @@ app.post('/api/admin/orders/:orderId/message', async (req, res) => {
           (u.username && u.username.toLowerCase().includes(search));
       });
       
+      if (filtered.length === 0) {
+        document.getElementById('usersList').innerHTML = '<div class="text-center text-gray-500 py-12">Пользователи не найдены</div>';
+        return;
+      }
+      
       document.getElementById('usersList').innerHTML = filtered.map(user => `
-        <div class="glass rounded-xl p-4 fade-in">
+        <div class="glass rounded-xl p-4 fade-in border border-gray-800/50">
           <div class="flex flex-wrap items-center justify-between gap-4">
             <div class="flex items-center gap-4">
-              <div class="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center text-xl font-bold">
+              <div class="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center text-sm font-medium">
                 ${(user.name || 'U').charAt(0).toUpperCase()}
               </div>
               <div>
-                <div class="font-semibold">${user.name || 'Без имени'}</div>
+                <div class="font-medium">${user.name || 'Без имени'}</div>
                 <div class="text-sm text-gray-500">@${user.username || 'нет username'}</div>
                 <div class="text-xs text-gray-600">ID: ${user.telegram_id}</div>
               </div>
             </div>
             <div class="flex items-center gap-6 text-sm">
               <div class="text-center">
-                <div class="text-lg font-bold ${getLevelColor(user.level)}">${user.level.toUpperCase()}</div>
+                <div class="text-sm font-medium ${getLevelColor(user.level)}">${(user.level || 'none').toUpperCase()}</div>
                 <div class="text-xs text-gray-600">Уровень</div>
               </div>
               <div class="text-center">
-                <div class="text-lg font-bold text-white">$${user.total_spent || 0}</div>
+                <div class="text-sm font-medium text-white">$${user.total_spent || 0}</div>
                 <div class="text-xs text-gray-600">Потрачено</div>
               </div>
               <div class="text-center">
-                <div class="text-lg font-bold text-gray-300">$${(user.cashback || 0).toFixed(2)}</div>
+                <div class="text-sm font-medium text-gray-400">$${(user.cashback || 0).toFixed(2)}</div>
                 <div class="text-xs text-gray-600">Кешбэк</div>
               </div>
-              <button onclick="sendMessageToUser(${user.id}, '${user.name}')" class="btn-secondary px-3 py-2 rounded-lg text-sm transition">
-                ✉️
+              <button onclick="sendMessageToUser(${user.id}, '${user.name || 'Пользователь'}')" class="bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg text-sm transition">
+                ✉
               </button>
             </div>
           </div>
@@ -655,38 +525,34 @@ app.post('/api/admin/orders/:orderId/message', async (req, res) => {
     }
 
     function renderReferrals() {
-      // Pending payouts (earnings > 0 and not yet paid)
       const pending = referralsData.filter(r => r.earnings > 0);
       
       document.getElementById('pendingPayouts').innerHTML = pending.length > 0 ? pending.map(r => `
-        <div class="bg-neutral-800 rounded-lg p-3 flex items-center justify-between">
+        <div class="bg-gray-900/50 rounded-lg p-3 flex items-center justify-between border border-gray-800">
           <div>
-            <div class="font-semibold">${r.referrer_name} (@${r.referrer_username || 'нет'})</div>
-            <div class="text-sm text-gray-500">За: ${r.referred_name}</div>
-            <div class="text-xs text-gray-600 mt-1">💳 ${r.trc20_wallet || '❌ Кошелёк не указан'}</div>
+            <div class="font-medium text-sm">${r.referrer_name}</div>
+            <div class="text-xs text-gray-500">За: ${r.referred_name}</div>
+            <div class="text-xs text-gray-600 mt-1">${r.trc20_wallet || 'Кошелёк не указан'}</div>
           </div>
           <div class="text-right">
-            <div class="text-lg font-bold text-white">$${r.earnings.toFixed(2)}</div>
-            <button onclick="markAsPaid(${r.id})" class="text-xs bg-white text-black hover:bg-gray-200 px-2 py-1 rounded mt-1 font-medium">
-              ✅ Выплачено
+            <div class="text-lg font-medium">$${r.earnings.toFixed(2)}</div>
+            <button onclick="markAsPaid(${r.id})" class="text-xs bg-gray-800 hover:bg-gray-700 px-2 py-1 rounded mt-1 transition">
+              Выплачено
             </button>
           </div>
         </div>
-      `).join('') : '<div class="text-gray-600 text-center">Нет ожидающих выплат</div>';
+      `).join('') : '<div class="text-gray-600 text-center text-sm">Нет ожидающих выплат</div>';
       
-      document.getElementById('referralsList').innerHTML = referralsData.map(r => `
-        <div class="bg-neutral-800 rounded-lg p-3 flex items-center justify-between">
-          <div>
-            <div class="text-sm">
-              <span class="text-gray-300">${r.referrer_name}</span> 
-              пригласил 
-              <span class="text-gray-400">${r.referred_name}</span>
-            </div>
-            <div class="text-xs text-gray-600">${formatDate(r.created_at)}</div>
+      document.getElementById('referralsList').innerHTML = referralsData.length > 0 ? referralsData.map(r => `
+        <div class="bg-gray-900/50 rounded-lg p-3 flex items-center justify-between border border-gray-800">
+          <div class="text-sm">
+            <span class="text-gray-400">${r.referrer_name}</span> 
+            пригласил 
+            <span class="text-gray-400">${r.referred_name}</span>
           </div>
-          <div class="text-white font-semibold">+$${r.earnings.toFixed(2)}</div>
+          <div class="text-gray-400 font-medium text-sm">+$${r.earnings.toFixed(2)}</div>
         </div>
-      `).join('') || '<div class="text-gray-600 text-center">Нет рефералов</div>';
+      `).join('') : '<div class="text-gray-600 text-center text-sm">Нет рефералов</div>';
     }
 
     function updateStats() {
@@ -697,15 +563,15 @@ app.post('/api/admin/orders/:orderId/message', async (req, res) => {
       
       const revenue = ordersData
         .filter(o => o.status === 'completed')
-        .reduce((sum, o) => sum + o.total, 0);
+        .reduce((sum, o) => sum + (o.total || 0), 0);
       document.getElementById('statRevenue').textContent = '$' + revenue.toFixed(0);
     }
 
     function updateNotifRecipients() {
       const select = document.getElementById('notifRecipient');
-      select.innerHTML = '<option value="all">📢 Все пользователи</option>';
+      select.innerHTML = '<option value="all">Все пользователи</option>';
       usersData.forEach(u => {
-        select.innerHTML += `<option value="${u.id}">👤 ${u.name} (@${u.username || 'нет'})</option>`;
+        select.innerHTML += `<option value="${u.id}">${u.name || 'Без имени'} (@${u.username || 'нет'})</option>`;
       });
     }
 
@@ -714,71 +580,79 @@ app.post('/api/admin/orders/:orderId/message', async (req, res) => {
       const order = ordersData.find(o => o.id === orderId);
       if (!order) return;
       
+      let formatsStr = '-';
+      try {
+        const formats = JSON.parse(order.formats || '[]');
+        formatsStr = formats.length > 0 ? formats.join(', ') : '-';
+      } catch(e) {
+        formatsStr = order.formats || '-';
+      }
+      
       document.getElementById('orderModalContent').innerHTML = `
         <div class="space-y-6">
           <div class="flex items-center justify-between">
-            <span class="font-mono text-xl text-gray-300">#${order.id}</span>
+            <span class="font-mono text-lg text-gray-400">#${order.id}</span>
             <span class="status-${order.status} px-3 py-1 rounded-full text-sm font-medium">
               ${getStatusText(order.status)}
             </span>
           </div>
           
-          <div class="grid grid-cols-2 gap-4">
-            <div class="bg-neutral-800 rounded-lg p-3">
-              <div class="text-gray-500 text-xs mb-1">Клиент</div>
-              <div class="font-semibold">${order.user_name || 'Неизвестно'}</div>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="bg-gray-900/50 rounded-lg p-3">
+              <div class="text-xs text-gray-600 mb-1 uppercase tracking-wide">Клиент</div>
+              <div class="font-medium">${order.user_name || 'Неизвестно'}</div>
               <div class="text-sm text-gray-500">@${order.username || 'нет'}</div>
             </div>
-            <div class="bg-neutral-800 rounded-lg p-3">
-              <div class="text-gray-500 text-xs mb-1">Сумма</div>
-              <div class="font-semibold text-white text-xl">$${order.total}</div>
+            <div class="bg-gray-900/50 rounded-lg p-3">
+              <div class="text-xs text-gray-600 mb-1 uppercase tracking-wide">Сумма</div>
+              <div class="font-medium text-xl">$${order.total}</div>
             </div>
           </div>
           
-          <div class="bg-neutral-800 rounded-lg p-4 space-y-2">
-            <div class="flex justify-between"><span class="text-gray-500">Услуга:</span><span>${order.service}</span></div>
-            <div class="flex justify-between"><span class="text-gray-500">Ниша:</span><span>${order.niche}</span></div>
-            <div class="flex justify-between"><span class="text-gray-500">Форматы:</span><span>${JSON.parse(order.formats || '[]').join(', ') || '-'}</span></div>
-            <div class="flex justify-between"><span class="text-gray-500">Оплата:</span><span>${order.payment_method || 'Не указано'}</span></div>
-            ${order.tx_hash ? `<div class="flex justify-between"><span class="text-gray-500">TxHash:</span><span class="text-xs font-mono">${order.tx_hash.substring(0, 20)}...</span></div>` : ''}
+          <div class="bg-gray-900/50 rounded-lg p-4 space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-gray-600">Услуга:</span><span>${order.service}</span></div>
+            <div class="flex justify-between"><span class="text-gray-600">Ниша:</span><span>${order.niche}</span></div>
+            <div class="flex justify-between"><span class="text-gray-600">Форматы:</span><span>${formatsStr}</span></div>
+            <div class="flex justify-between"><span class="text-gray-600">Оплата:</span><span>${order.payment_method || 'Не указано'}</span></div>
+            ${order.tx_hash ? `<div class="flex justify-between"><span class="text-gray-600">TxHash:</span><span class="text-xs font-mono">${order.tx_hash.substring(0, 20)}...</span></div>` : ''}
           </div>
           
           ${order.description ? `
-          <div class="bg-neutral-800 rounded-lg p-4">
-            <div class="text-gray-500 text-xs mb-2">Описание</div>
-            <div class="text-sm">${order.description}</div>
+          <div class="bg-gray-900/50 rounded-lg p-4">
+            <div class="text-xs text-gray-600 mb-2 uppercase tracking-wide">Описание</div>
+            <div class="text-sm text-gray-400">${order.description}</div>
           </div>` : ''}
           
           ${order.refs ? `
-          <div class="bg-neutral-800 rounded-lg p-4">
-            <div class="text-gray-500 text-xs mb-2">Референсы</div>
-            <div class="text-sm break-all">${order.refs}</div>
+          <div class="bg-gray-900/50 rounded-lg p-4">
+            <div class="text-xs text-gray-600 mb-2 uppercase tracking-wide">Референсы</div>
+            <div class="text-sm text-gray-400 break-all">${order.refs}</div>
           </div>` : ''}
           
-          <div class="border-t border-neutral-700 pt-4">
-            <div class="text-sm text-gray-500 mb-3">Изменить статус:</div>
+          <div class="border-t border-gray-800 pt-4">
+            <div class="text-xs text-gray-600 mb-3 uppercase tracking-wide">Изменить статус:</div>
             <div class="grid grid-cols-2 gap-2">
-              <button onclick="updateOrderStatus('${order.id}', 'pending')" class="status-pending py-2 rounded-lg font-medium ${order.status === 'pending' ? 'ring-2 ring-white' : ''} hover:opacity-80 transition">
-                ⏳ Ожидает
+              <button onclick="updateOrderStatus('${order.id}', 'pending')" class="status-pending py-2 rounded-lg font-medium text-sm ${order.status === 'pending' ? 'ring-2 ring-white' : ''}">
+                Ожидает
               </button>
-              <button onclick="updateOrderStatus('${order.id}', 'working')" class="status-working py-2 rounded-lg font-medium ${order.status === 'working' ? 'ring-2 ring-white' : ''} hover:opacity-80 transition">
-                🎨 В работе
+              <button onclick="updateOrderStatus('${order.id}', 'working')" class="status-working py-2 rounded-lg font-medium text-sm ${order.status === 'working' ? 'ring-2 ring-white' : ''}">
+                В работе
               </button>
-              <button onclick="updateOrderStatus('${order.id}', 'completed')" class="status-completed py-2 rounded-lg font-medium ${order.status === 'completed' ? 'ring-2 ring-black' : ''} hover:opacity-80 transition">
-                ✅ Готов
+              <button onclick="updateOrderStatus('${order.id}', 'completed')" class="status-completed py-2 rounded-lg font-medium text-sm ${order.status === 'completed' ? 'ring-2 ring-white' : ''}">
+                Готов
               </button>
-              <button onclick="updateOrderStatus('${order.id}', 'cancelled')" class="status-cancelled py-2 rounded-lg font-medium ${order.status === 'cancelled' ? 'ring-2 ring-white' : ''} hover:opacity-80 transition">
-                ❌ Отменён
+              <button onclick="updateOrderStatus('${order.id}', 'cancelled')" class="status-cancelled py-2 rounded-lg font-medium text-sm ${order.status === 'cancelled' ? 'ring-2 ring-white' : ''}">
+                Отменён
               </button>
             </div>
           </div>
           
-          <div class="border-t border-neutral-700 pt-4">
-            <div class="text-sm text-gray-500 mb-3">Отправить сообщение клиенту:</div>
+          <div class="border-t border-gray-800 pt-4">
+            <div class="text-xs text-gray-600 mb-3 uppercase tracking-wide">Отправить сообщение клиенту:</div>
             <textarea id="orderMessage" rows="2" placeholder="Напишите сообщение..." 
-              class="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-4 py-2 mb-2 focus:outline-none focus:border-white transition"></textarea>
-            <button onclick="sendOrderMessage('${order.id}')" class="w-full btn-primary py-2 rounded-lg font-medium transition">
-              📤 Отправить
+              class="w-full bg-gray-900/50 border border-gray-800 rounded-lg px-4 py-2 text-sm mb-2 focus:outline-none focus:border-white transition"></textarea>
+            <button onclick="sendOrderMessage('${order.id}')" class="w-full bg-white text-black hover:bg-gray-200 py-2 rounded-lg font-medium text-sm transition">
+              Отправить
             </button>
           </div>
         </div>
@@ -797,27 +671,27 @@ app.post('/api/admin/orders/:orderId/message', async (req, res) => {
     async function updateOrderStatus(orderId, status) {
       try {
         await apiCall(`/api/admin/orders/${orderId}/status`, 'POST', { status });
-        showToast(`✅ Статус изменён на "${getStatusText(status)}"`, 'success');
+        showToast(`Статус изменён на "${getStatusText(status)}"`, 'success');
         await loadOrders();
         openOrderModal(orderId);
       } catch (error) {
-        showToast('❌ Ошибка: ' + error.message, 'error');
+        showToast('Ошибка: ' + error.message, 'error');
       }
     }
 
     async function sendOrderMessage(orderId) {
       const message = document.getElementById('orderMessage').value.trim();
       if (!message) {
-        showToast('⚠️ Введите сообщение', 'warning');
+        showToast('Введите сообщение', 'warning');
         return;
       }
       
       try {
         await apiCall(`/api/admin/orders/${orderId}/message`, 'POST', { message });
-        showToast('✅ Сообщение отправлено', 'success');
+        showToast('Сообщение отправлено', 'success');
         document.getElementById('orderMessage').value = '';
       } catch (error) {
-        showToast('❌ Ошибка: ' + error.message, 'error');
+        showToast('Ошибка: ' + error.message, 'error');
       }
     }
 
@@ -828,7 +702,7 @@ app.post('/api/admin/orders/:orderId/message', async (req, res) => {
       const sendTelegram = document.getElementById('sendTelegram').checked;
       
       if (!title || !message) {
-        showToast('⚠️ Заполните заголовок и сообщение', 'warning');
+        showToast('Заполните заголовок и сообщение', 'warning');
         return;
       }
       
@@ -839,37 +713,40 @@ app.post('/api/admin/orders/:orderId/message', async (req, res) => {
           message,
           sendTelegram
         });
-        showToast('✅ Уведомление отправлено', 'success');
+        showToast('Уведомление отправлено', 'success');
         document.getElementById('notifTitle').value = '';
         document.getElementById('notifMessage').value = '';
       } catch (error) {
-        showToast('❌ Ошибка: ' + error.message, 'error');
+        showToast('Ошибка: ' + error.message, 'error');
       }
     }
 
     function sendMessageToUser(userId, name) {
       switchTab('notifications');
       document.getElementById('notifRecipient').value = userId;
-      document.getElementById('notifTitle').value = `💬 Сообщение для ${name}`;
+      document.getElementById('notifTitle').value = `Сообщение для ${name}`;
       document.getElementById('notifTitle').focus();
     }
 
     async function markAsPaid(referralId) {
-      showToast('💸 Функция в разработке. Отметьте выплату вручную.', 'info');
+      try {
+        await apiCall(`/api/admin/referrals/${referralId}/paid`, 'POST', {});
+        showToast('Отмечено как выплачено', 'success');
+        await loadReferrals();
+      } catch (error) {
+        showToast('Ошибка: ' + error.message, 'error');
+      }
     }
 
     // Tabs
     function switchTab(tabName) {
       document.querySelectorAll('.tab-content').forEach(t => t.classList.add('hidden'));
-      document.querySelectorAll('.tab-btn').forEach(b => {
-        b.classList.remove('tab-active');
-        b.classList.add('bg-neutral-800', 'text-gray-300');
+      document.querySelectorAll('.nav-btn').forEach(b => {
+        b.classList.remove('active');
       });
       
       document.getElementById(tabName + 'Tab').classList.remove('hidden');
-      const activeBtn = document.querySelector(`[data-tab="${tabName}"]`);
-      activeBtn.classList.add('tab-active');
-      activeBtn.classList.remove('bg-neutral-800', 'text-gray-300');
+      document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
     }
 
     function filterOrders() {
@@ -898,7 +775,7 @@ app.post('/api/admin/orders/:orderId/message', async (req, res) => {
       ].join('\n');
       
       downloadFile('orders.csv', csv);
-      showToast('📥 Заказы экспортированы', 'success');
+      showToast('Заказы экспортированы', 'success');
     }
 
     function exportUsers() {
@@ -919,7 +796,7 @@ app.post('/api/admin/orders/:orderId/message', async (req, res) => {
       ].join('\n');
       
       downloadFile('users.csv', csv);
-      showToast('📥 Пользователи экспортированы', 'success');
+      showToast('Пользователи экспортированы', 'success');
     }
 
     function downloadFile(filename, content) {
@@ -937,32 +814,33 @@ app.post('/api/admin/orders/:orderId/message', async (req, res) => {
       adminKey = document.getElementById('settingsAdminKey').value.trim();
       localStorage.setItem('apiUrl', apiUrl);
       localStorage.setItem('adminKey', adminKey);
-      showToast('✅ Настройки сохранены', 'success');
+      showToast('Настройки сохранены', 'success');
     }
 
     // Helpers
     function getStatusText(status) {
       const statuses = {
-        pending: '⏳ Ожидает',
-        working: '🎨 В работе',
-        completed: '✅ Готов',
-        cancelled: '❌ Отменён'
+        pending: 'Ожидает',
+        working: 'В работе',
+        completed: 'Готов',
+        cancelled: 'Отменён'
       };
       return statuses[status] || status;
     }
 
     function getLevelColor(level) {
       const colors = {
-        none: 'text-gray-600',
-        bronze: 'text-gray-400',
+        none: 'text-gray-500',
+        bronze: 'text-orange-400',
         silver: 'text-gray-300',
-        gold: 'text-gray-200',
+        gold: 'text-yellow-400',
         platinum: 'text-white'
       };
       return colors[level] || 'text-gray-500';
     }
 
     function formatDate(dateStr) {
+      if (!dateStr) return '-';
       const date = new Date(dateStr);
       return date.toLocaleDateString('ru-RU', {
         day: 'numeric',
@@ -976,13 +854,13 @@ app.post('/api/admin/orders/:orderId/message', async (req, res) => {
       const container = document.getElementById('toastContainer');
       const colors = {
         success: 'bg-white text-black',
-        error: 'bg-red-500 text-white',
-        warning: 'bg-neutral-600 text-white',
-        info: 'bg-neutral-700 text-white'
+        error: 'bg-red-600 text-white',
+        warning: 'bg-gray-700 text-white',
+        info: 'bg-gray-600 text-white'
       };
       
       const toast = document.createElement('div');
-      toast.className = `${colors[type]} px-4 py-3 rounded-lg shadow-lg fade-in font-medium`;
+      toast.className = `${colors[type]} px-4 py-3 rounded-lg shadow-lg fade-in text-sm`;
       toast.textContent = message;
       container.appendChild(toast);
       
