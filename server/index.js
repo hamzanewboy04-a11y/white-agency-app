@@ -151,6 +151,19 @@ db.exec(`
     FOREIGN KEY (order_id) REFERENCES orders(id),
     FOREIGN KEY (user_id) REFERENCES users(id)
   );
+
+  CREATE TABLE IF NOT EXISTS withdrawals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    amount REAL NOT NULL,
+    wallet_address TEXT NOT NULL,
+    type TEXT NOT NULL,
+    status TEXT DEFAULT 'pending',
+    tx_hash TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    processed_at DATETIME,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
 `);
 
 // ==================== MIGRATIONS ====================
@@ -179,6 +192,36 @@ try {
 try {
   db.prepare('ALTER TABLE orders ADD COLUMN comment TEXT').run();
   console.log('Migration: Added comment column to orders table');
+} catch (error) {
+  if (!error.message.includes('duplicate column name')) {
+    console.error('Migration error:', error.message);
+  }
+}
+
+// Add promo_code column to orders if it doesn't exist
+try {
+  db.prepare('ALTER TABLE orders ADD COLUMN promo_code TEXT').run();
+  console.log('Migration: Added promo_code column to orders table');
+} catch (error) {
+  if (!error.message.includes('duplicate column name')) {
+    console.error('Migration error:', error.message);
+  }
+}
+
+// Add discount_amount column to orders if it doesn't exist
+try {
+  db.prepare('ALTER TABLE orders ADD COLUMN discount_amount REAL DEFAULT 0').run();
+  console.log('Migration: Added discount_amount column to orders table');
+} catch (error) {
+  if (!error.message.includes('duplicate column name')) {
+    console.error('Migration error:', error.message);
+  }
+}
+
+// Add subtotal column to orders if it doesn't exist
+try {
+  db.prepare('ALTER TABLE orders ADD COLUMN subtotal REAL').run();
+  console.log('Migration: Added subtotal column to orders table');
 } catch (error) {
   if (!error.message.includes('duplicate column name')) {
     console.error('Migration error:', error.message);
@@ -513,13 +556,16 @@ app.post('/api/cart-orders', authMiddleware, (req, res) => {
 
     // Insert cart order with items
     db.prepare(`
-      INSERT INTO orders (id, user_id, items, comment, total, status, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO orders (id, user_id, items, comment, promo_code, discount_amount, subtotal, total, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       orderId,
       user.id,
       JSON.stringify(orderData.items || []),
       orderData.comment || '',
+      orderData.promo_code || null,
+      orderData.discount_amount || 0,
+      orderData.subtotal || orderData.total,
       orderData.total,
       'awaiting_manager',
       new Date().toISOString()
@@ -536,12 +582,18 @@ app.post('/api/cart-orders', authMiddleware, (req, res) => {
       `  • ${item.name} x${item.quantity} - $${item.total}`
     ).join('\n');
 
+    // Build promo info for notification
+    const promoInfo = orderData.promo_code
+      ? `🎫 Промокод: ${orderData.promo_code} (-$${orderData.discount_amount})\n`
+      : '';
+
     // Notify admin about new cart order
     notifyAdmin(
       `🛒 Новый заказ из корзины #${orderId}\n\n` +
       `👤 Клиент: ${user.name} (@${user.username || 'no username'})\n` +
       `Telegram ID: ${user.telegram_id}\n\n` +
       `📦 Товары:\n${itemsList}\n\n` +
+      `${promoInfo}` +
       `💰 Итого: $${orderData.total}\n` +
       `${orderData.comment ? `💬 Комментарий: ${orderData.comment}\n` : ''}\n` +
       `⚡ Требуется создать инвойс в админ-панели`
@@ -1678,6 +1730,201 @@ app.post('/api/admin/users/:id/cashback', adminAuthMiddleware, (req, res) => {
   } catch (error) {
     console.error('Update cashback error:', error);
     res.status(500).json({ error: 'Failed to update cashback' });
+  }
+});
+
+// ==================== WITHDRAWALS ====================
+
+// Request withdrawal (user)
+app.post('/api/withdrawal-request', authMiddleware, (req, res) => {
+  try {
+    const tgUser = req.telegramUser;
+    const user = db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(tgUser.id.toString());
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const { type, amount } = req.body; // type: 'cashback' or 'referral'
+
+    // Check if user has TRC20 wallet
+    if (!user.trc20_wallet) {
+      return res.status(400).json({ error: 'no_wallet', message: 'Пожалуйста, добавьте TRC20 кошелек в настройках профиля' });
+    }
+
+    // Validate amount
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ error: 'invalid_amount', message: 'Неверная сумма' });
+    }
+
+    // Check if user has enough balance
+    if (type === 'cashback') {
+      if (user.cashback < amount) {
+        return res.status(400).json({ error: 'insufficient_balance', message: 'Недостаточно средств на балансе кешбэка' });
+      }
+    } else if (type === 'referral') {
+      if (user.referral_earnings < amount) {
+        return res.status(400).json({ error: 'insufficient_balance', message: 'Недостаточно реферальных средств' });
+      }
+    } else {
+      return res.status(400).json({ error: 'invalid_type', message: 'Неверный тип выплаты' });
+    }
+
+    // Create withdrawal request
+    const result = db.prepare(`
+      INSERT INTO withdrawals (user_id, amount, wallet_address, type, status)
+      VALUES (?, ?, ?, ?, 'pending')
+    `).run(user.id, amount, user.trc20_wallet, type);
+
+    const withdrawalId = result.lastInsertRowid;
+
+    // Add notification to user
+    db.prepare(`
+      INSERT INTO notifications (user_id, title, message)
+      VALUES (?, ?, ?)
+    `).run(user.id, '💸 Запрос на выплату', `Запрос на выплату $${amount} передан в обработку`);
+
+    // Notify admin
+    const typeText = type === 'cashback' ? 'кешбэк' : 'реферальный доход';
+    notifyAdmin(
+      `💸 Запрос на выплату #${withdrawalId}\n\n` +
+      `👤 Клиент: ${user.name} (@${user.username || 'no username'})\n` +
+      `Telegram ID: ${user.telegram_id}\n` +
+      `💰 Сумма: $${amount}\n` +
+      `📊 Тип: ${typeText}\n` +
+      `💳 Кошелек: ${user.trc20_wallet}\n\n` +
+      `⚡ Требуется обработать в админ-панели`
+    );
+
+    res.json({ success: true, withdrawalId });
+  } catch (error) {
+    console.error('Withdrawal request error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get all withdrawals (admin only)
+app.get('/api/admin/withdrawals', adminAuthMiddleware, (req, res) => {
+  try {
+    const withdrawals = db.prepare(`
+      SELECT w.*, u.name as user_name, u.username, u.telegram_id, u.cashback, u.referral_earnings
+      FROM withdrawals w
+      LEFT JOIN users u ON w.user_id = u.id
+      ORDER BY w.created_at DESC
+    `).all();
+
+    res.json(withdrawals);
+  } catch (error) {
+    console.error('Get withdrawals error:', error);
+    res.status(500).json({ error: 'Failed to get withdrawals' });
+  }
+});
+
+// Process withdrawal (admin only)
+app.post('/api/admin/withdrawals/:id/process', adminAuthMiddleware, (req, res) => {
+  try {
+    const { id } = req.params;
+    const { tx_hash } = req.body;
+
+    const withdrawal = db.prepare('SELECT * FROM withdrawals WHERE id = ?').get(id);
+    if (!withdrawal) {
+      return res.status(404).json({ error: 'Withdrawal not found' });
+    }
+
+    if (withdrawal.status !== 'pending') {
+      return res.status(400).json({ error: 'Withdrawal already processed' });
+    }
+
+    // Update withdrawal status
+    db.prepare(`
+      UPDATE withdrawals
+      SET status = 'completed', tx_hash = ?, processed_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(tx_hash || null, id);
+
+    // Deduct from user balance
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(withdrawal.user_id);
+    if (withdrawal.type === 'cashback') {
+      const newCashback = Math.max(0, user.cashback - withdrawal.amount);
+      db.prepare('UPDATE users SET cashback = ? WHERE id = ?').run(newCashback, user.id);
+
+      // Add to cashback history
+      db.prepare(`
+        INSERT INTO cashback_history (user_id, amount, description)
+        VALUES (?, ?, ?)
+      `).run(user.id, -withdrawal.amount, `Выплата #${id}`);
+    } else if (withdrawal.type === 'referral') {
+      const newEarnings = Math.max(0, user.referral_earnings - withdrawal.amount);
+      db.prepare('UPDATE users SET referral_earnings = ? WHERE id = ?').run(newEarnings, user.id);
+    }
+
+    // Notify user
+    db.prepare(`
+      INSERT INTO notifications (user_id, title, message)
+      VALUES (?, ?, ?)
+    `).run(user.id, '✅ Выплата выполнена', `Выплата $${withdrawal.amount} успешно отправлена на ваш кошелек`);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Process withdrawal error:', error);
+    res.status(500).json({ error: 'Failed to process withdrawal' });
+  }
+});
+
+// Cancel withdrawal (admin only)
+app.post('/api/admin/withdrawals/:id/cancel', adminAuthMiddleware, (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    const withdrawal = db.prepare('SELECT * FROM withdrawals WHERE id = ?').get(id);
+    if (!withdrawal) {
+      return res.status(404).json({ error: 'Withdrawal not found' });
+    }
+
+    if (withdrawal.status !== 'pending') {
+      return res.status(400).json({ error: 'Withdrawal already processed' });
+    }
+
+    // Update withdrawal status
+    db.prepare(`
+      UPDATE withdrawals
+      SET status = 'cancelled', processed_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(id);
+
+    // Notify user
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(withdrawal.user_id);
+    db.prepare(`
+      INSERT INTO notifications (user_id, title, message)
+      VALUES (?, ?, ?)
+    `).run(user.id, '❌ Выплата отменена', `Выплата $${withdrawal.amount} отменена. ${reason || 'Обратитесь к менеджеру'}`);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Cancel withdrawal error:', error);
+    res.status(500).json({ error: 'Failed to cancel withdrawal' });
+  }
+});
+
+// Get user withdrawals
+app.get('/api/withdrawals', authMiddleware, (req, res) => {
+  try {
+    const tgUser = req.telegramUser;
+    const user = db.prepare('SELECT * FROM users WHERE telegram_id = ?').get(tgUser.id.toString());
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const withdrawals = db.prepare(`
+      SELECT * FROM withdrawals WHERE user_id = ? ORDER BY created_at DESC
+    `).all(user.id);
+
+    res.json(withdrawals);
+  } catch (error) {
+    console.error('Get user withdrawals error:', error);
+    res.status(500).json({ error: 'Failed to get withdrawals' });
   }
 });
 

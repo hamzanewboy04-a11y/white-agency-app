@@ -643,10 +643,30 @@
                         <span class="text-gray-600">Товаров:</span>
                         <span id="cartItemCount" class="font-medium">0</span>
                     </div>
-                    <div class="flex justify-between items-center">
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600">Сумма:</span>
+                        <span id="cartSubtotal" class="font-medium">$0.00</span>
+                    </div>
+                    <div id="cartDiscount" class="flex justify-between text-sm text-green-600 hidden">
+                        <span>Скидка по промокоду:</span>
+                        <span id="cartDiscountAmount">-$0.00</span>
+                    </div>
+                    <div class="flex justify-between items-center border-t pt-2">
                         <span class="text-lg font-semibold">Итого:</span>
                         <span class="text-2xl font-bold" id="cartTotal">$0.00</span>
                     </div>
+                </div>
+
+                <div class="mt-4 space-y-3">
+                    <label class="text-sm font-medium block">Промокод (опционально)</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="cartPromoCode" placeholder="Введите промокод..." class="flex-1 px-4 py-3 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-black uppercase">
+                        <button onclick="applyPromoCode()" class="px-6 py-3 bg-black text-white rounded-xl text-sm font-medium hover:bg-gray-800 transition-colors">
+                            Применить
+                        </button>
+                    </div>
+                    <p id="promoError" class="text-xs text-red-500 hidden"></p>
+                    <p id="promoSuccess" class="text-xs text-green-600 hidden"></p>
                 </div>
 
                 <div class="mt-4 space-y-3">
@@ -929,7 +949,8 @@
             isLoading: true,
             appSettings: null,
             products: [], // Products from API
-            cart: [] // {productId, name, price, quantity}
+            cart: [], // {productId, name, price, quantity}
+            appliedPromo: null // {code, discount_percent, discount_amount}
         };
 
         // ==================== TELEGRAM WEBAPP ====================
@@ -2068,10 +2089,74 @@
             `).join('');
 
             const totalItems = state.cart.reduce((sum, item) => sum + item.quantity, 0);
-            const totalPrice = state.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            const subtotal = state.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+            let discount = 0;
+            if (state.appliedPromo) {
+                discount = state.appliedPromo.discount_amount;
+            }
+
+            const totalPrice = subtotal - discount;
 
             document.getElementById('cartItemCount').textContent = totalItems;
+            document.getElementById('cartSubtotal').textContent = `$${subtotal.toFixed(2)}`;
             document.getElementById('cartTotal').textContent = `$${totalPrice.toFixed(2)}`;
+
+            // Show/hide discount
+            if (state.appliedPromo) {
+                document.getElementById('cartDiscount').classList.remove('hidden');
+                document.getElementById('cartDiscountAmount').textContent = `-$${discount.toFixed(2)}`;
+            } else {
+                document.getElementById('cartDiscount').classList.add('hidden');
+            }
+        }
+
+        async function applyPromoCode() {
+            const promoInput = document.getElementById('cartPromoCode');
+            const code = promoInput.value.trim().toUpperCase();
+            const promoError = document.getElementById('promoError');
+            const promoSuccess = document.getElementById('promoSuccess');
+
+            promoError.classList.add('hidden');
+            promoSuccess.classList.add('hidden');
+
+            if (!code) {
+                promoError.textContent = 'Введите промокод';
+                promoError.classList.remove('hidden');
+                return;
+            }
+
+            try {
+                // Check promo code with API
+                const promo = await apiRequest(`/api/promo/${code}`);
+
+                if (!promo || !promo.is_active) {
+                    promoError.textContent = 'Промокод не найден или неактивен';
+                    promoError.classList.remove('hidden');
+                    return;
+                }
+
+                // Calculate discount
+                const subtotal = state.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+                const discountAmount = (subtotal * promo.discount_percent) / 100;
+
+                state.appliedPromo = {
+                    code: code,
+                    discount_percent: promo.discount_percent,
+                    discount_amount: discountAmount
+                };
+
+                promoSuccess.textContent = `Промокод применен! Скидка ${promo.discount_percent}%`;
+                promoSuccess.classList.remove('hidden');
+                promoInput.disabled = true;
+
+                renderCart();
+                showToast(`✅ Промокод ${code} применен (-${promo.discount_percent}%)`);
+            } catch (error) {
+                console.error('Promo code error:', error);
+                promoError.textContent = 'Ошибка проверки промокода';
+                promoError.classList.remove('hidden');
+            }
         }
 
         async function sendCartToManager() {
@@ -2088,13 +2173,25 @@
                 total: item.price * item.quantity
             }));
 
-            const totalPrice = state.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            const subtotal = state.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+            let discountAmount = 0;
+            let promoCode = null;
+            if (state.appliedPromo) {
+                discountAmount = state.appliedPromo.discount_amount;
+                promoCode = state.appliedPromo.code;
+            }
+
+            const totalPrice = subtotal - discountAmount;
 
             const orderData = {
                 id: 'ORD' + Date.now(),
                 user_id: state.user?.id,
                 items: items,
                 comment: comment,
+                promo_code: promoCode,
+                discount_amount: discountAmount,
+                subtotal: subtotal,
                 total: totalPrice,
                 status: 'awaiting_manager',
                 created_at: new Date().toISOString()
@@ -2106,10 +2203,13 @@
                     await apiRequest('/api/cart-orders', 'POST', orderData);
                 }
 
-                // Clear cart
+                // Clear cart and promo
                 state.cart = [];
+                state.appliedPromo = null;
                 saveCart();
                 updateCartBadge();
+                document.getElementById('cartPromoCode').value = '';
+                document.getElementById('cartPromoCode').disabled = false;
 
                 closeModal();
                 showToast('✅ Заказ отправлен менеджеру!');
