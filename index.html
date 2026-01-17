@@ -33,7 +33,53 @@
         body.dark {
             --tg-theme-bg-color: #1a1a1a;
             --tg-theme-text-color: #ffffff;
+            --tg-theme-hint-color: #999999;
+            --tg-theme-link-color: #64b5f6;
+            --tg-theme-button-color: #ffffff;
+            --tg-theme-button-text-color: #000000;
             --tg-theme-secondary-bg-color: #2a2a2a;
+        }
+
+        /* Dark theme improvements */
+        body.dark .card {
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        body.dark input,
+        body.dark textarea,
+        body.dark select {
+            background: #2a2a2a;
+            color: #ffffff;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        body.dark input::placeholder,
+        body.dark textarea::placeholder {
+            color: #888888;
+        }
+
+        body.dark .text-gray-700 {
+            color: #e0e0e0;
+        }
+
+        body.dark .text-gray-500 {
+            color: #aaaaaa;
+        }
+
+        body.dark .text-gray-400 {
+            color: #999999;
+        }
+
+        body.dark .border-gray-100 {
+            border-color: rgba(255,255,255,0.1);
+        }
+
+        body.dark .bg-gray-100 {
+            background-color: #2a2a2a;
+        }
+
+        body.dark .hover\:bg-gray-100:hover {
+            background-color: #3a3a3a;
         }
         
         .card {
