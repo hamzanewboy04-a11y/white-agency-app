@@ -7,6 +7,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/@tonconnect/ui@latest/dist/tonconnect-ui.min.js"></script>
     <style>
         * {
             font-family: 'Inter', sans-serif;
@@ -33,7 +34,53 @@
         body.dark {
             --tg-theme-bg-color: #1a1a1a;
             --tg-theme-text-color: #ffffff;
+            --tg-theme-hint-color: #999999;
+            --tg-theme-link-color: #64b5f6;
+            --tg-theme-button-color: #ffffff;
+            --tg-theme-button-text-color: #000000;
             --tg-theme-secondary-bg-color: #2a2a2a;
+        }
+
+        /* Dark theme improvements */
+        body.dark .card {
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        body.dark input,
+        body.dark textarea,
+        body.dark select {
+            background: #2a2a2a;
+            color: #ffffff;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        body.dark input::placeholder,
+        body.dark textarea::placeholder {
+            color: #888888;
+        }
+
+        body.dark .text-gray-700 {
+            color: #e0e0e0;
+        }
+
+        body.dark .text-gray-500 {
+            color: #aaaaaa;
+        }
+
+        body.dark .text-gray-400 {
+            color: #999999;
+        }
+
+        body.dark .border-gray-100 {
+            border-color: rgba(255,255,255,0.1);
+        }
+
+        body.dark .bg-gray-100 {
+            background-color: #2a2a2a;
+        }
+
+        body.dark .hover\:bg-gray-100:hover {
+            background-color: #3a3a3a;
         }
         
         .card {
@@ -718,7 +765,12 @@
                 <div>
                     <label class="text-sm font-medium text-gray-700 mb-2 block">Хеш транзакции (TxID)</label>
                     <input type="text" id="txHash" placeholder="Вставьте хеш после оплаты..." class="w-full px-4 py-3 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-green-500">
-                    <p class="text-xs text-gray-400 mt-1">Найдите в истории вашего кошелька после отправки</p>
+                    <div class="flex items-center justify-between mt-2">
+                        <p class="text-xs text-gray-400">Найдите в истории вашего кошелька</p>
+                        <button type="button" onclick="checkTronScan()" class="text-xs text-blue-600 hover:text-blue-700">
+                            🔍 Проверить на TronScan
+                        </button>
+                    </div>
                 </div>
                 
                 <button onclick="confirmUsdtPayment()" id="confirmUsdtBtn" class="w-full py-4 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
@@ -781,7 +833,8 @@
         let state = {
             user: null,
             tgUser: null,
-            isLoading: true
+            isLoading: true,
+            appSettings: null
         };
 
         // ==================== TELEGRAM WEBAPP ====================
@@ -894,6 +947,36 @@
             if (CONFIG.API_URL) {
                 apiRequest('/api/user', 'POST', state.user);
             }
+        }
+
+        async function loadAppSettings() {
+            try {
+                if (CONFIG.API_URL) {
+                    const settings = await apiRequest('/api/settings');
+                    if (settings && settings.services) {
+                        state.appSettings = settings;
+                        // Update CONFIG.PRICES with server settings
+                        CONFIG.PRICES = settings.services;
+                        // Update service select dropdown
+                        updateServiceOptions();
+                        // Update prices modal
+                        renderPrices();
+                        console.log('App settings loaded from server');
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load app settings:', error);
+                // Use default CONFIG.PRICES if API fails
+            }
+        }
+
+        function updateServiceOptions() {
+            const select = document.getElementById('serviceType');
+            if (!select) return;
+
+            select.innerHTML = CONFIG.PRICES.map(service =>
+                `<option value="${service.price}">${service.name} (от $${service.price})</option>`
+            ).join('');
         }
 
         function generateRefCode() {
@@ -1118,23 +1201,30 @@
 
         function renderPrices() {
             const level = CONFIG.LEVELS[state.user?.level] || CONFIG.LEVELS.none;
-            document.getElementById('priceDiscount').textContent = `-${level.discount}%`;
-            
-            document.getElementById('pricesList').innerHTML = CONFIG.PRICES.map(p => {
-                const discounted = p.price * (1 - level.discount / 100);
-                return `
-                    <div class="flex justify-between items-center py-3 border-b border-gray-100">
-                        <div>
-                            <p class="font-medium">${p.name}</p>
-                            <p class="text-xs text-gray-400">${p.desc}</p>
+            const discountEl = document.getElementById('priceDiscount');
+            const listEl = document.getElementById('pricesList');
+
+            if (discountEl) {
+                discountEl.textContent = `-${level.discount}%`;
+            }
+
+            if (listEl) {
+                listEl.innerHTML = CONFIG.PRICES.map(p => {
+                    const discounted = p.price * (1 - level.discount / 100);
+                    return `
+                        <div class="flex justify-between items-center py-3 border-b border-gray-100">
+                            <div>
+                                <p class="font-medium">${p.name}</p>
+                                <p class="text-xs text-gray-400">${p.desc}</p>
+                            </div>
+                            <div class="text-right">
+                                ${level.discount > 0 ? `<p class="text-gray-400 line-through text-sm">$${p.price}</p>` : ''}
+                                <p class="font-bold text-green-600">$${discounted.toFixed(2)}</p>
+                            </div>
                         </div>
-                        <div class="text-right">
-                            ${level.discount > 0 ? `<p class="text-gray-400 line-through text-sm">$${p.price}</p>` : ''}
-                            <p class="font-bold text-green-600">$${discounted.toFixed(2)}</p>
-                        </div>
-                    </div>
-                `;
-            }).join('');
+                    `;
+                }).join('');
+            }
         }
 
         // ==================== MODALS ====================
@@ -1500,8 +1590,18 @@
         // ==================== INIT ====================
         async function init() {
             initTelegram();
-            await loadUserData();
-            
+
+            // Load user data and app settings in parallel
+            await Promise.all([
+                loadUserData(),
+                loadAppSettings()
+            ]);
+
+            // Initialize TON Connect in background (don't block app loading)
+            setTimeout(() => {
+                initTonConnect();
+            }, 500);
+
             document.getElementById('loadingScreen').style.display = 'none';
             state.isLoading = false;
         }
@@ -1518,7 +1618,25 @@
         let currentPaymentMethod = 'ton';
         let pendingOrder = null;
         const USDT_ADDRESS = 'TUgg2zUetS8JicSZNSxpTnGeA2hPGfVt9Q';
-        const TON_ADDRESS = 'UQxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx';
+        const TON_ADDRESS = 'UQDqWKqWEE4h8D2bGNXGYjPzYfYJfCO3q_K8a_8KxvKGcxiK'; // Replace with your TON wallet
+
+        // TON Connect initialization
+        let tonConnectUI = null;
+
+        function initTonConnect() {
+            try {
+                if (typeof window.TON_CONNECT_UI !== 'undefined') {
+                    tonConnectUI = new window.TON_CONNECT_UI.TonConnectUI({
+                        manifestUrl: 'https://raw.githubusercontent.com/ton-connect/demo-dapp-with-wallet/master/public/tonconnect-manifest.json'
+                    });
+                    console.log('TON Connect initialized');
+                } else {
+                    console.log('TON Connect UI not available');
+                }
+            } catch (error) {
+                console.error('Failed to initialize TON Connect:', error);
+            }
+        }
         
         function selectPaymentMethod(method) {
             currentPaymentMethod = method;
@@ -1557,30 +1675,35 @@
         });
         
         async function payWithTon() {
-            if (typeof TON_CONNECT_UI !== 'undefined') {
+            if (tonConnectUI && tonConnectUI.connected) {
                 try {
+                    const tonAmount = (pendingOrder.total / 2.5).toFixed(2);
                     const transaction = {
                         validUntil: Math.floor(Date.now() / 1000) + 600,
                         messages: [{
                             address: TON_ADDRESS,
-                            amount: (pendingOrder.total * 1e9 / 2.5).toString(),
+                            amount: (tonAmount * 1e9).toString(),
                         }]
                     };
                     const result = await tonConnectUI.sendTransaction(transaction);
-                    completeOrder(result.boc);
+                    if (result && result.boc) {
+                        completeOrder(result.boc);
+                    }
                 } catch (e) {
+                    console.error('TON payment error:', e);
                     showToast('❌ Оплата отменена');
                 }
             } else {
+                // Fallback to TON deep link
                 const tonAmount = (pendingOrder.total / 2.5).toFixed(2);
-                const url = `ton://transfer/${TON_ADDRESS}?amount=${tonAmount * 1e9}&text=Order_${Date.now()}`;
-                
+                const url = `ton://transfer/${TON_ADDRESS}?amount=${tonAmount * 1e9}&text=Order_${pendingOrder.id}`;
+
                 if (tg) {
                     tg.openLink(url);
                 } else {
                     window.open(url, '_blank');
                 }
-                
+
                 showToast('💎 Откройте кошелёк и подтвердите');
                 setTimeout(() => {
                     selectPaymentMethod('usdt');
@@ -1589,13 +1712,42 @@
             }
         }
         
-        function confirmUsdtPayment() {
+        function checkTronScan() {
             const txHash = document.getElementById('txHash').value.trim();
-            if (txHash.length < 10) {
-                showToast('❌ Введите корректный хеш');
+            if (!txHash) {
+                showToast('Введите хеш транзакции');
                 return;
             }
-            
+
+            const url = `https://tronscan.org/#/transaction/${txHash}`;
+            if (tg) {
+                tg.openLink(url);
+            } else {
+                window.open(url, '_blank');
+            }
+        }
+
+        function confirmUsdtPayment() {
+            const txHash = document.getElementById('txHash').value.trim();
+
+            if (!txHash) {
+                showToast('❌ Введите хеш транзакции');
+                return;
+            }
+
+            if (txHash.length < 10) {
+                showToast('❌ Слишком короткий хеш');
+                return;
+            }
+
+            // Validate TRC20 hash format (64 hex characters)
+            const trc20HashPattern = /^[a-fA-F0-9]{64}$/;
+
+            if (!trc20HashPattern.test(txHash)) {
+                showToast('⚠️ Формат не соответствует TRC20. Проверьте правильность');
+                // Allow to continue even with non-standard format
+            }
+
             completeOrder(txHash);
         }
         

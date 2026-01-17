@@ -91,6 +91,14 @@ db.exec(`
     referral_code TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS app_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    services TEXT DEFAULT '[]',
+    prices TEXT DEFAULT '{}',
+    form_fields TEXT DEFAULT '[]',
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 // ==================== AUTH ====================
@@ -980,6 +988,70 @@ bot.command('support', async (ctx) => {
 // Handle any errors
 bot.catch((err, ctx) => {
   console.error('Bot error:', err);
+});
+
+// ==================== SETTINGS API ====================
+
+// Get app settings (public)
+app.get('/api/settings', (req, res) => {
+  try {
+    let settings = db.prepare('SELECT * FROM app_settings WHERE id = 1').get();
+
+    if (!settings) {
+      // Create default settings
+      const defaultSettings = {
+        services: JSON.stringify([
+          { name: 'Статика', price: 10, desc: '1 креатив' },
+          { name: 'Пак статики', price: 30, desc: '5 креативов' },
+          { name: 'Видео-креатив', price: 25, desc: '9:16 / 4:5 / 1:1' },
+          { name: 'Липсинг', price: 40, desc: 'Движение губ под текст' },
+          { name: 'AI-аватар', price: 30, desc: 'Нейро-персонаж' },
+          { name: 'UGC-видео', price: 100, desc: 'До 15 сек' },
+          { name: 'GIF/Анимация', price: 15, desc: 'Motion-дизайн' },
+          { name: 'Дизайн лендинга', price: 200, desc: 'UX/UI' }
+        ]),
+        prices: JSON.stringify({}),
+        form_fields: JSON.stringify([])
+      };
+
+      db.prepare(`
+        INSERT INTO app_settings (id, services, prices, form_fields)
+        VALUES (1, ?, ?, ?)
+      `).run(defaultSettings.services, defaultSettings.prices, defaultSettings.form_fields);
+
+      settings = db.prepare('SELECT * FROM app_settings WHERE id = 1').get();
+    }
+
+    res.json({
+      services: JSON.parse(settings.services || '[]'),
+      prices: JSON.parse(settings.prices || '{}'),
+      form_fields: JSON.parse(settings.form_fields || '[]')
+    });
+  } catch (error) {
+    console.error('Get settings error:', error);
+    res.status(500).json({ error: 'Failed to get settings' });
+  }
+});
+
+// Update app settings (admin only)
+app.post('/api/admin/settings', adminAuthMiddleware, (req, res) => {
+  try {
+    const { services, prices, form_fields } = req.body;
+
+    db.prepare(`
+      INSERT OR REPLACE INTO app_settings (id, services, prices, form_fields, updated_at)
+      VALUES (1, ?, ?, ?, CURRENT_TIMESTAMP)
+    `).run(
+      JSON.stringify(services || []),
+      JSON.stringify(prices || {}),
+      JSON.stringify(form_fields || [])
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Update settings error:', error);
+    res.status(500).json({ error: 'Failed to update settings' });
+  }
 });
 
 // ==================== WEBHOOK SETUP ====================

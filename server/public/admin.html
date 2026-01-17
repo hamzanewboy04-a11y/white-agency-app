@@ -232,6 +232,19 @@
 
       <!-- Settings Tab -->
       <div id="settingsTab" class="tab-content hidden">
+        <!-- Services Management -->
+        <div class="glass rounded-xl p-6 mb-6">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-medium text-gray-400 text-sm uppercase tracking-wide">Управление услугами</h3>
+            <button onclick="addService()" class="bg-white text-black hover:bg-gray-200 px-4 py-2 rounded-lg text-sm font-medium transition">
+              + Добавить услугу
+            </button>
+          </div>
+          <div id="servicesList" class="space-y-3">
+            <div class="text-center text-gray-500 py-4">Загрузка...</div>
+          </div>
+        </div>
+
         <div class="grid md:grid-cols-2 gap-6">
           <div class="glass rounded-xl p-6">
             <h3 class="font-medium mb-4 text-gray-400 text-sm uppercase tracking-wide">Настройки API</h3>
@@ -498,9 +511,96 @@
       }
     }
 
+    // Services Management
+    let servicesData = [];
+
+    async function loadServices() {
+      try {
+        const settings = await apiCall('/api/settings');
+        servicesData = settings.services || [];
+        renderServices();
+      } catch (error) {
+        console.error('Error loading services:', error);
+        showToast('Ошибка загрузки услуг', 'error');
+      }
+    }
+
+    function renderServices() {
+      const container = document.getElementById('servicesList');
+      if (!servicesData || servicesData.length === 0) {
+        container.innerHTML = '<div class="text-center text-gray-500 py-4">Нет услуг</div>';
+        return;
+      }
+
+      container.innerHTML = servicesData.map((service, index) => `
+        <div class="bg-gray-900/50 rounded-lg p-4 flex items-center gap-4">
+          <div class="flex-1">
+            <input type="text" value="${service.name}"
+              onchange="updateServiceField(${index}, 'name', this.value)"
+              class="bg-transparent border-b border-gray-700 focus:border-white outline-none text-sm font-medium mb-1 w-full"
+              placeholder="Название услуги">
+            <input type="text" value="${service.desc}"
+              onchange="updateServiceField(${index}, 'desc', this.value)"
+              class="bg-transparent border-b border-gray-700 focus:border-white outline-none text-xs text-gray-400 w-full"
+              placeholder="Описание">
+          </div>
+          <div class="w-24">
+            <input type="number" value="${service.price}"
+              onchange="updateServiceField(${index}, 'price', parseFloat(this.value))"
+              class="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm w-full focus:outline-none focus:border-white"
+              placeholder="Цена">
+          </div>
+          <button onclick="deleteService(${index})"
+            class="text-red-400 hover:text-red-300 transition"
+            title="Удалить">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+          </button>
+        </div>
+      `).join('');
+    }
+
+    function updateServiceField(index, field, value) {
+      servicesData[index][field] = value;
+      saveServices();
+    }
+
+    function addService() {
+      servicesData.push({
+        name: 'Новая услуга',
+        desc: 'Описание',
+        price: 10
+      });
+      renderServices();
+      saveServices();
+    }
+
+    function deleteService(index) {
+      if (confirm('Удалить эту услугу?')) {
+        servicesData.splice(index, 1);
+        renderServices();
+        saveServices();
+      }
+    }
+
+    async function saveServices() {
+      try {
+        await apiCall('/api/admin/settings', 'POST', {
+          services: servicesData,
+          prices: {},
+          form_fields: []
+        });
+        showToast('Услуги сохранены', 'success');
+      } catch (error) {
+        console.error('Error saving services:', error);
+        showToast('Ошибка сохранения: ' + error.message, 'error');
+      }
+    }
+
     async function refreshAllData() {
       showToast('Обновление данных...', 'info');
-      await Promise.all([loadOrders(), loadUsers(), loadReferrals()]);
+      await Promise.all([loadOrders(), loadUsers(), loadReferrals(), loadServices()]);
       showToast('Данные обновлены', 'success');
     }
 
