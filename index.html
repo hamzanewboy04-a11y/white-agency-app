@@ -875,21 +875,33 @@
                     'Content-Type': 'application/json',
                 }
             };
-            
+
             if (tg?.initData) {
                 options.headers['X-Telegram-Init-Data'] = tg.initData;
             }
-            
+
             if (data) {
                 options.body = JSON.stringify(data);
             }
-            
+
             try {
+                // Add timeout to prevent hanging
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+                options.signal = controller.signal;
+
                 const response = await fetch(url, options);
+                clearTimeout(timeoutId);
+
                 if (!response.ok) throw new Error('API Error');
                 return await response.json();
             } catch (error) {
-                console.error('API Error:', error);
+                if (error.name === 'AbortError') {
+                    console.error('API Request timeout:', endpoint);
+                } else {
+                    console.error('API Error:', error);
+                }
                 return null;
             }
         }
@@ -954,13 +966,17 @@
         // ==================== UI UPDATES ====================
         function updateUI() {
             if (!state.user) return;
-            
-            const user = state.user;
-            const level = CONFIG.LEVELS[user.level] || CONFIG.LEVELS.none;
-            
-            document.getElementById('userName').textContent = user.name;
-            document.getElementById('avatarPreview').textContent = user.name[0].toUpperCase();
-            document.getElementById('avatarPreview').className = `w-11 h-11 rounded-full bg-gradient-to-br from-gray-800 to-black flex items-center justify-center text-white font-bold text-lg border-2 level-${user.level || 'bronze'}`;
+
+            try {
+                const user = state.user;
+                const level = CONFIG.LEVELS[user.level] || CONFIG.LEVELS.none;
+
+                const userName = user.name || 'Пользователь';
+                const userInitial = userName.charAt(0).toUpperCase() || '?';
+
+                document.getElementById('userName').textContent = userName;
+                document.getElementById('avatarPreview').textContent = userInitial;
+                document.getElementById('avatarPreview').className = `w-11 h-11 rounded-full bg-gradient-to-br from-gray-800 to-black flex items-center justify-center text-white font-bold text-lg border-2 level-${user.level || 'bronze'}`;
             
             const levelBadge = document.getElementById('userLevelBadge');
             levelBadge.textContent = user.level ? user.level.charAt(0).toUpperCase() + user.level.slice(1) : 'New';
@@ -982,18 +998,21 @@
             renderAchievements();
             renderPrices();
             
-            document.getElementById('settingsName').value = user.name;
-            document.getElementById('settingsAvatar').textContent = user.name[0].toUpperCase();
+            document.getElementById('settingsName').value = userName;
+            document.getElementById('settingsAvatar').textContent = userInitial;
             document.getElementById('settingsUsername').textContent = user.username ? `@${user.username}` : 'Telegram';
             document.getElementById('settingsLevelBadge').textContent = user.level || 'New';
             document.getElementById('settingsLevelBadge').className = `mt-2 px-3 py-1 rounded-full badge-${user.level || 'bronze'} text-white text-xs font-medium`;
             document.getElementById('trc20Wallet').value = user.trc20Wallet || '';
-            document.getElementById('notifOrders').checked = user.settings.notifOrders;
-            document.getElementById('notifPromo').checked = user.settings.notifPromo;
-            document.getElementById('notifRef').checked = user.settings.notifRef;
+            document.getElementById('notifOrders').checked = user.settings?.notifOrders ?? true;
+            document.getElementById('notifPromo').checked = user.settings?.notifPromo ?? true;
+            document.getElementById('notifRef').checked = user.settings?.notifRef ?? true;
             
             const unread = user.notifications.filter(n => !n.read).length;
             document.getElementById('notifDot').style.display = unread > 0 ? 'block' : 'none';
+            } catch (error) {
+                console.error('Error updating UI:', error);
+            }
         }
 
         function updateProgressBar() {
@@ -1560,12 +1579,28 @@
 
         // ==================== INIT ====================
         async function init() {
-            initTelegram();
-            initTonConnect();
-            await loadUserData();
+            try {
+                console.log('🚀 Initializing app...');
+                initTelegram();
+                console.log('✅ Telegram initialized');
 
-            document.getElementById('loadingScreen').style.display = 'none';
-            state.isLoading = false;
+                initTonConnect();
+                console.log('✅ TON Connect initialized');
+
+                await loadUserData();
+                console.log('✅ User data loaded');
+            } catch (error) {
+                console.error('❌ Error during initialization:', error);
+                // Show error to user
+                if (typeof showToast === 'function') {
+                    showToast('❌ Ошибка загрузки. Попробуйте перезапустить приложение');
+                }
+            } finally {
+                // Always hide loading screen
+                document.getElementById('loadingScreen').style.display = 'none';
+                state.isLoading = false;
+                console.log('✅ App initialized');
+            }
         }
 
         document.addEventListener('keydown', (e) => {
