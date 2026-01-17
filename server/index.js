@@ -661,17 +661,13 @@ bot.command('start', async (ctx) => {
     });
   } catch (error) {
     console.error('Error in /start command:', error);
-    // Fallback without formatting
-    await ctx.reply(
-      `👋 Добро пожаловать в White Agency!\n\nНажмите кнопку ниже, чтобы открыть личный кабинет 👇`,
-      {
-        reply_markup: {
-          inline_keyboard: [[
-            { text: '🚀 Открыть личный кабинет', web_app: { url: process.env.WEBAPP_URL } }
-          ]]
-        }
+    await ctx.reply('Добро пожаловать! Нажмите кнопку ниже:', {
+      reply_markup: {
+        inline_keyboard: [[
+          { text: '🚀 Открыть', web_app: { url: process.env.WEBAPP_URL } }
+        ]]
       }
-    ).catch(e => console.error('Fallback message failed:', e));
+    }).catch(e => console.error('Fallback message failed:', e));
   }
 });
 
@@ -771,21 +767,52 @@ bot.catch((err, ctx) => {
   console.error('Bot error:', err);
 });
 
+// ==================== WEBHOOK SETUP ====================
+
+// Webhook endpoint for Telegram
+app.post(`/webhook/${process.env.BOT_TOKEN}`, (req, res) => {
+  bot.handleUpdate(req.body);
+  res.sendStatus(200);
+});
+
 // ==================== START ====================
 
 const PORT = process.env.PORT || 8080;
 
-// Start bot with error handling
-bot.launch().then(() => {
-  console.log('🤖 Bot started successfully');
-}).catch(err => {
-  console.error('Failed to start bot:', err);
-});
+async function startApp() {
+  // Start Express server first
+  app.listen(PORT, '0.0.0.0', async () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    
+    // Setup bot based on environment
+    if (process.env.RAILWAY_PUBLIC_DOMAIN || process.env.WEBHOOK_URL) {
+      // Production: use webhook
+      const webhookUrl = process.env.WEBHOOK_URL || `https://${process.env.RAILWAY_PUBLIC_DOMAIN}/webhook/${process.env.BOT_TOKEN}`;
+      
+      try {
+        // Delete any existing webhook first
+        await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+        // Set new webhook
+        await bot.telegram.setWebhook(webhookUrl);
+        console.log(`🤖 Bot webhook set to: ${webhookUrl}`);
+      } catch (err) {
+        console.error('Failed to set webhook:', err.message);
+      }
+    } else {
+      // Development: use polling
+      try {
+        // Delete webhook first to use polling
+        await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+        await bot.launch();
+        console.log('🤖 Bot started with polling');
+      } catch (err) {
+        console.error('Failed to start bot:', err.message);
+      }
+    }
+  });
+}
 
-// Start server
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+startApp();
 
 // Graceful shutdown
 process.once('SIGINT', () => {
