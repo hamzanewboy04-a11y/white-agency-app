@@ -506,33 +506,21 @@ app.post('/api/orders', authMiddleware, (req, res) => {
       order.basePrice
     );
     
-    // Update user cashback and total spent
-    db.prepare(`
-      UPDATE users SET 
-        cashback = cashback - ? + ?,
-        total_spent = total_spent + ?
-      WHERE id = ?
-    `).run(order.cashbackUsed || 0, order.cashbackEarned, order.total, user.id);
-    
-    // Add cashback history
+    // Deduct used cashback (if any)
     if (order.cashbackUsed > 0) {
+      db.prepare(`
+        UPDATE users SET cashback = cashback - ? WHERE id = ?
+      `).run(order.cashbackUsed, user.id);
+
       db.prepare(`
         INSERT INTO cashback_history (user_id, amount, description)
         VALUES (?, ?, ?)
       `).run(user.id, -order.cashbackUsed, `Оплата заказа #${orderId}`);
     }
-    
-    db.prepare(`
-      INSERT INTO cashback_history (user_id, amount, description)
-      VALUES (?, ?, ?)
-    `).run(user.id, order.cashbackEarned, `Кешбэк за заказ #${orderId}`);
-    
-    // Check and update level
-    updateUserLevel(user.id);
-    
-    // Process referral payment for first order
-    processReferralPayment(user.id);
-    
+
+    // NOTE: Cashback rewards, total_spent, level updates and referral bonuses
+    // will be processed AFTER payment confirmation
+
     // Add notification
     db.prepare(`
       INSERT INTO notifications (user_id, title, message)
@@ -587,26 +575,8 @@ app.post('/api/cart-orders', authMiddleware, (req, res) => {
       new Date().toISOString()
     );
 
-    // Calculate and add cashback (5%)
-    const cashbackAmount = orderData.total * 0.05;
-    db.prepare(`
-      UPDATE users SET
-        cashback = cashback + ?,
-        total_spent = total_spent + ?
-      WHERE id = ?
-    `).run(cashbackAmount, orderData.total, user.id);
-
-    // Add cashback history
-    db.prepare(`
-      INSERT INTO cashback_history (user_id, amount, description)
-      VALUES (?, ?, ?)
-    `).run(user.id, cashbackAmount, `Кешбэк за заказ #${orderId}`);
-
-    // Check and update user level
-    updateUserLevel(user.id);
-
-    // Process referral payment for first order
-    processReferralPayment(user.id);
+    // NOTE: Cashback and referral bonuses will be added AFTER payment confirmation
+    // in the payment verification endpoint
 
     // Add notification to user
     db.prepare(`
@@ -1592,6 +1562,30 @@ app.post('/api/invoices/:id/confirm', authMiddleware, (req, res) => {
 
     // Update order status to working
     db.prepare('UPDATE orders SET status = ?, tx_hash = ? WHERE id = ?').run('working', invoice.tx_hash, invoice.order_id);
+
+    // NOW PROCESS PAYMENT REWARDS (cashback, referrals, level)
+    // Calculate and add cashback (5%)
+    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(invoice.order_id);
+    const cashbackAmount = invoice.amount * 0.05;
+
+    db.prepare(`
+      UPDATE users SET
+        cashback = cashback + ?,
+        total_spent = total_spent + ?
+      WHERE id = ?
+    `).run(cashbackAmount, invoice.amount, invoice.user_id);
+
+    // Add cashback history
+    db.prepare(`
+      INSERT INTO cashback_history (user_id, amount, description)
+      VALUES (?, ?, ?)
+    `).run(invoice.user_id, cashbackAmount, `Кешбэк за заказ #${invoice.order_id}`);
+
+    // Check and update user level
+    updateUserLevel(invoice.user_id);
+
+    // Process referral payment for first order
+    processReferralPayment(invoice.user_id);
 
     // Send notification to user
     db.prepare(`

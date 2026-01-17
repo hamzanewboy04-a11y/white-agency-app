@@ -1528,28 +1528,14 @@
         return;
       }
 
-      // Check if order already has items (cart order) with potential promo code
-      let promoCode = null;
-      let discountAmount = 0;
-
-      // For cart orders, check if there was a promo code applied
-      // This would be stored in the order comment or we can ask admin
-      const hasPromo = confirm('Был применен промокод?');
-      if (hasPromo) {
-        promoCode = prompt('Введите код промокода:');
-        if (promoCode) {
-          const discount = prompt('Введите размер скидки ($):');
-          discountAmount = parseFloat(discount) || 0;
-        }
-      }
+      // Use final amount from order (already includes all discounts)
+      const finalAmount = order.total;
 
       try {
         const invoice = await apiCall('/api/admin/invoices', 'POST', {
           order_id: orderId,
           user_id: userId,
-          amount: amount,
-          promo_code: promoCode,
-          discount_amount: discountAmount
+          amount: finalAmount
         });
 
         showToast('Инвойс создан и отправлен клиенту!', 'success');
