@@ -128,6 +128,9 @@
         <button onclick="switchTab('notifications')" class="nav-btn px-4 py-2 rounded-lg whitespace-nowrap text-sm font-medium" data-tab="notifications">
           Уведомления
         </button>
+        <button onclick="switchTab('promos')" class="nav-btn px-4 py-2 rounded-lg whitespace-nowrap text-sm font-medium" data-tab="promos">
+          Промокоды
+        </button>
         <button onclick="switchTab('settings')" class="nav-btn px-4 py-2 rounded-lg whitespace-nowrap text-sm font-medium" data-tab="settings">
           Настройки
         </button>
@@ -226,6 +229,45 @@
             <button onclick="sendNotification()" class="w-full bg-white text-black hover:bg-gray-200 py-3 rounded-xl font-medium transition">
               Отправить
             </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Promos Tab -->
+      <div id="promosTab" class="tab-content hidden">
+        <div class="glass rounded-xl p-6 mb-6">
+          <h3 class="font-medium mb-4 text-gray-400 text-sm uppercase tracking-wide">Создать промокод</h3>
+          <div class="grid md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs text-gray-500 mb-2 uppercase tracking-wide">Код</label>
+              <input type="text" id="promoCode" placeholder="SUMMER2024"
+                class="w-full bg-gray-900/50 border border-gray-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-white uppercase">
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-2 uppercase tracking-wide">Скидка (%)</label>
+              <input type="number" id="promoDiscount" min="1" max="100" placeholder="10"
+                class="w-full bg-gray-900/50 border border-gray-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-white">
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-2 uppercase tracking-wide">Макс. использований (опц.)</label>
+              <input type="number" id="promoMaxUses" min="1" placeholder="100"
+                class="w-full bg-gray-900/50 border border-gray-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-white">
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-2 uppercase tracking-wide">Истекает (опц.)</label>
+              <input type="datetime-local" id="promoExpires"
+                class="w-full bg-gray-900/50 border border-gray-800 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-white">
+            </div>
+          </div>
+          <button onclick="createPromo()" class="mt-4 w-full bg-white text-black hover:bg-gray-200 py-3 rounded-xl font-medium transition">
+            Создать промокод
+          </button>
+        </div>
+
+        <div class="glass rounded-xl p-6">
+          <h3 class="font-medium mb-4 text-gray-400 text-sm uppercase tracking-wide">Активные промокоды</h3>
+          <div id="promosList" class="space-y-3">
+            <div class="text-center text-gray-500 py-4">Загрузка...</div>
           </div>
         </div>
       </div>
@@ -598,9 +640,129 @@
       }
     }
 
+    // Promo Codes Management
+    let promosData = [];
+
+    async function loadPromos() {
+      try {
+        promosData = await apiCall('/api/admin/promos');
+        renderPromos();
+      } catch (error) {
+        console.error('Error loading promos:', error);
+        showToast('Ошибка загрузки промокодов', 'error');
+      }
+    }
+
+    function renderPromos() {
+      const container = document.getElementById('promosList');
+      if (!promosData || promosData.length === 0) {
+        container.innerHTML = '<div class="text-center text-gray-500 py-4">Нет промокодов</div>';
+        return;
+      }
+
+      container.innerHTML = promosData.map(promo => {
+        const expired = promo.expires_at && new Date(promo.expires_at) < new Date();
+        const exhausted = promo.max_uses && promo.current_uses >= promo.max_uses;
+        const statusText = expired ? '❌ Истёк' : exhausted ? '❌ Исчерпан' : promo.is_active ? '✅ Активен' : '❌ Неактивен';
+
+        return `
+          <div class="bg-gray-900/50 rounded-lg p-4 border border-gray-800">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="flex items-center gap-3 mb-2">
+                  <span class="font-mono text-lg font-bold">${promo.code}</span>
+                  <span class="text-sm px-2 py-1 rounded-full ${expired || exhausted ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}">
+                    ${statusText}
+                  </span>
+                </div>
+                <div class="text-sm text-gray-400 space-y-1">
+                  <div>Скидка: <span class="text-white font-medium">${promo.discount_percent}%</span></div>
+                  <div>Использовано: <span class="text-white">${promo.current_uses}</span> ${promo.max_uses ? `из ${promo.max_uses}` : ''}</div>
+                  ${promo.expires_at ? `<div>Истекает: <span class="text-white">${new Date(promo.expires_at).toLocaleString('ru-RU')}</span></div>` : ''}
+                  <div class="text-xs text-gray-600">Создан: ${new Date(promo.created_at).toLocaleString('ru-RU')}</div>
+                </div>
+              </div>
+              <button onclick="deletePromo(${promo.id})" class="text-red-400 hover:text-red-300 transition px-3 py-2" title="Удалить">
+                🗑️
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function createPromo() {
+      const code = document.getElementById('promoCode').value.trim().toUpperCase();
+      const discount = parseInt(document.getElementById('promoDiscount').value);
+      const maxUses = document.getElementById('promoMaxUses').value ? parseInt(document.getElementById('promoMaxUses').value) : null;
+      const expires = document.getElementById('promoExpires').value || null;
+
+      if (!code) {
+        showToast('Введите код промокода', 'error');
+        return;
+      }
+
+      if (!discount || discount < 1 || discount > 100) {
+        showToast('Скидка должна быть от 1 до 100%', 'error');
+        return;
+      }
+
+      try {
+        await apiCall('/api/admin/promos', 'POST', {
+          code,
+          discount_percent: discount,
+          max_uses: maxUses,
+          expires_at: expires
+        });
+
+        showToast('Промокод создан!', 'success');
+
+        // Clear form
+        document.getElementById('promoCode').value = '';
+        document.getElementById('promoDiscount').value = '';
+        document.getElementById('promoMaxUses').value = '';
+        document.getElementById('promoExpires').value = '';
+
+        loadPromos();
+      } catch (error) {
+        showToast('Ошибка: ' + error.message, 'error');
+      }
+    }
+
+    async function deletePromo(id) {
+      if (!confirm('Удалить этот промокод?')) return;
+
+      try {
+        await apiCall(`/api/admin/promos/${id}`, 'DELETE');
+        showToast('Промокод удалён', 'success');
+        loadPromos();
+      } catch (error) {
+        showToast('Ошибка: ' + error.message, 'error');
+      }
+    }
+
+    async function addCashback(userId, userName) {
+      const amount = prompt(`Введите сумму кешбека для ${userName}:\n(положительное число для добавления, отрицательное для вычитания)`);
+      if (!amount) return;
+
+      const amountNum = parseFloat(amount);
+      if (isNaN(amountNum)) {
+        showToast('Неверная сумма', 'error');
+        return;
+      }
+
+      try {
+        await apiCall(`/api/admin/users/${userId}/cashback`, 'POST', { amount: amountNum });
+        showToast(`Кешбек обновлён: ${amountNum > 0 ? '+' : ''}$${amountNum.toFixed(2)}`, 'success');
+        loadUsers();
+      } catch (error) {
+        showToast('Ошибка: ' + error.message, 'error');
+      }
+    }
+
     async function refreshAllData() {
       showToast('Обновление данных...', 'info');
-      await Promise.all([loadOrders(), loadUsers(), loadReferrals(), loadServices()]);
+      await Promise.all([loadOrders(), loadUsers(), loadReferrals(), loadServices(), loadPromos()]);
       showToast('Данные обновлены', 'success');
     }
 
@@ -689,8 +851,11 @@
                 <div class="text-sm font-medium text-gray-400">$${(user.cashback || 0).toFixed(2)}</div>
                 <div class="text-xs text-gray-600">Кешбэк</div>
               </div>
-              <button onclick="sendMessageToUser(${user.id}, '${user.name || 'Пользователь'}')" class="bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg text-sm transition">
+              <button onclick="sendMessageToUser(${user.id}, '${user.name || 'Пользователь'}')" class="bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-lg text-sm transition" title="Отправить сообщение">
                 ✉
+              </button>
+              <button onclick="addCashback(${user.id}, '${user.name || 'Пользователь'}')" class="bg-green-800 hover:bg-green-700 px-3 py-2 rounded-lg text-sm transition" title="Добавить кешбек">
+                💰
               </button>
             </div>
           </div>
@@ -802,7 +967,43 @@
             <div class="text-xs text-gray-600 mb-2 uppercase tracking-wide">Референсы</div>
             <div class="text-sm text-gray-400 break-all">${order.refs}</div>
           </div>` : ''}
-          
+
+          ${(() => {
+            try {
+              const media = typeof order.media === 'string' ? JSON.parse(order.media) : order.media;
+              if (media && Array.isArray(media) && media.length > 0) {
+                return `
+                <div class="bg-gray-900/50 rounded-lg p-4">
+                  <div class="text-xs text-gray-600 mb-3 uppercase tracking-wide">Медиа-файлы (${media.length})</div>
+                  <div class="grid grid-cols-3 gap-3">
+                    ${media.map(file => {
+                      if (file.type && file.type.startsWith('image/')) {
+                        return `
+                          <a href="${file.data}" download="${file.name}" class="block bg-gray-800 rounded-lg overflow-hidden hover:ring-2 ring-white transition">
+                            <img src="${file.data}" class="w-full h-24 object-cover">
+                            <div class="p-2 text-xs truncate">${file.name}</div>
+                          </a>
+                        `;
+                      } else {
+                        const icon = file.type && file.type.startsWith('video/') ? '🎥' : '📄';
+                        return `
+                          <a href="${file.data}" download="${file.name}" class="block bg-gray-800 rounded-lg p-3 hover:ring-2 ring-white transition text-center">
+                            <div class="text-3xl mb-2">${icon}</div>
+                            <div class="text-xs truncate">${file.name}</div>
+                          </a>
+                        `;
+                      }
+                    }).join('')}
+                  </div>
+                </div>
+                `;
+              }
+            } catch(e) {
+              console.error('Media parse error:', e);
+            }
+            return '';
+          })()}
+
           <div class="border-t border-gray-800 pt-4">
             <div class="text-xs text-gray-600 mb-3 uppercase tracking-wide">Изменить статус:</div>
             <div class="grid grid-cols-2 gap-2">
