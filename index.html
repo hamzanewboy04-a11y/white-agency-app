@@ -2536,28 +2536,28 @@
                 // Check promo code with API
                 const promo = await apiRequest(`/api/promo/${code}`);
 
-                if (!promo || !promo.is_active) {
-                    promoError.textContent = 'Промокод не найден или неактивен';
+                if (!promo || !promo.valid) {
+                    promoError.textContent = promo?.error || 'Промокод не найден или неактивен';
                     promoError.classList.remove('hidden');
                     return;
                 }
 
                 // Calculate discount
                 const subtotal = state.cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-                const discountAmount = (subtotal * promo.discount_percent) / 100;
+                const discountAmount = (subtotal * promo.discount) / 100;
 
                 state.appliedPromo = {
                     code: code,
-                    discount_percent: promo.discount_percent,
+                    discount_percent: promo.discount,
                     discount_amount: discountAmount
                 };
 
-                promoSuccess.textContent = `Промокод применен! Скидка ${promo.discount_percent}%`;
+                promoSuccess.textContent = `Промокод применен! Скидка ${promo.discount}%`;
                 promoSuccess.classList.remove('hidden');
                 promoInput.disabled = true;
 
                 renderCart();
-                showToast(`✅ Промокод ${code} применен (-${promo.discount_percent}%)`);
+                showToast(`✅ Промокод ${code} применен (-${promo.discount}%)`);
             } catch (error) {
                 console.error('Promo code error:', error);
                 promoError.textContent = 'Ошибка проверки промокода';

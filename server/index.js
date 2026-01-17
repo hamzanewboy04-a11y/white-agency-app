@@ -1622,8 +1622,8 @@ app.post('/api/admin/promos', adminAuthMiddleware, (req, res) => {
     }
 
     const result = db.prepare(`
-      INSERT INTO promo_codes (code, discount_percent, max_uses, expires_at)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO promo_codes (code, discount_percent, max_uses, expires_at, is_active)
+      VALUES (?, ?, ?, ?, 1)
     `).run(code.toUpperCase(), discount_percent, max_uses || null, expires_at || null);
 
     res.json({
